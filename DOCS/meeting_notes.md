@@ -1,0 +1,9 @@
+Protokoll (20181107):
+
+-Regarding organization, it was agreed to establish communications via Slack, GitHub (for which I need push access) and Skype (for general reviews). 
+
+-The PortCityModel is a description of processes that will used to (1) understand and visualize the current situation and (2) evaluate alternative scenarios potentially using user interaction in a touch-table. Several stakeholders are currently running meetings to decide about physical interventions that may affect the Cruise Chain Process, and a new cruise terminal is planned to open to public in 2020. Moreover, one of the goals of optimizing the Central Station situation is to gain more time for people to visit the city and create a larger economic impact of the cruise business beyond the cruise operators. The effect of these scenarios should be portrayed by our models in order to eventually assess decision-making. 
+
+-In order to simplify and optimize the performance of the model, we agreed to work in two scales; (1) human-scale in Central Station area and surroundings would evaluate current spatial issues and (2) city-scale considering the Central Station together with the terminals, not necessarily space-based but rather flow-based. Both models are complementing each other (i.e. people coming by train in model 1 will use several transport means in model 2 to arrive at the cruise terminals to depart in cruises, and people arriving in cruises in model 2 will take several transport means to arrive at the train station in model 1).
+
+-We’re considering boarding and disembarkation processes together on each model: people going from the train station to the terminals, and from the terminals to the train station. Furthermore, most of the transport means (bus shuttles, taxis, luggage sprinters) are turn-around: they travel back and forth from the Central Station to the cruise terminals.
