@@ -20,8 +20,8 @@ global {
 	float step <- 1 #s;
 	int current_hour update: (time / #hour) mod 24;
 	
-	int nb_people<-1;
-	int nb_tourists <- 200;
+	int nb_people<- rnd(7)+5;
+	int nb_tourist <- rnd(7)+1;
 	int nb_taxis <- 20;
 	int nb_shuttle <- 2;
 	int nb_sprinters <- 1;
@@ -30,13 +30,17 @@ global {
 	float max_speed_ppl <- 2 #km / #h;
 	geometry free_space;
 	int maximal_turn <- 135; //in degree
-	int cohesion_factor <- 5;
+	int cohesion_factor_ppl <- 1; //must be more than 0
+	int cohesion_factor_tou <- 20;
 	float people_size <- 2.0;
 	int coming_train;
-	int platform_nb <- 3;
+	int nb_people_existing;
+	int luggage_drop<-0;
 	
-	reflex update { //trains arriving randomly
-		coming_train <- rnd(100)+rnd(15);
+	reflex update { 
+		coming_train <- rnd(500)+rnd(1000); //trains arriving randomly
+		nb_people_existing <- length(list(people));
+		luggage_drop <- int(tourist count(each.dropped_luggage));
 	}
 
 	init{
@@ -44,7 +48,7 @@ global {
 		create metro from: shapefile_public_transportation;
 		create sprinter_spot from: shapefile_sprinters;
 		create shuttle_spot from: shapefile_shuttle;
-		create entry_points from: shapefile_entry_points; //number of platform should be taken from shapefile
+		create entry_points from: shapefile_entry_points with: [platform_nb::int(read("platform_s"))]; //number of platform should be taken from shapefile
 		create walking_area from: shapefile_walking_paths {
 			//Creation of the free space by removing the shape of the buildings (train station complex)
 			free_space <- geometry(walking_area - (hbf + people_size));
@@ -84,20 +88,26 @@ species shuttle_spot{
 species entry_points{
 	rgb color<-#black;	
 	bool has_train <- false;
-	int anden;
-	int incoming_train;
+	int platform_nb;
 	
 	reflex train {
-		incoming_train <- coming_train;
-		anden <- platform_nb;
-		if (incoming_train = anden) {
+		if (coming_train = platform_nb) {
 			has_train <- true;
 			color <- #green;
+			
 			create species(people) number: nb_people{
 				speed <- min_speed_ppl + (max_speed_ppl - min_speed_ppl) ;
 				target_loc <- point(one_of(metro));
-				location <- point(one_of(entry_points /*when: has_train = true*/));
-			}
+				location <- point(myself);
+			}	
+				create species(tourist) number: nb_tourist{
+				speed <- min_speed_ppl + (max_speed_ppl - min_speed_ppl) ;
+				target_loc <- point(one_of(sprinter_spot));
+				location <- point(myself);
+			}	
+		}
+		else {
+				color <- #black;
 		}
 	}	
 	
@@ -123,12 +133,11 @@ species people skills:[moving] {
 		
 	//Reflex to change target when arrived
 	reflex end when: location distance_to target_loc <= 2 * people_size{
-		//target_loc<-one_of(metro);
 		do die;
 	}
 	//Reflex to compute the velocity of the agent considering the cohesion factor
 	reflex follow_goal  {
-		velocity <- velocity + ((target_loc - location) / cohesion_factor);
+		velocity <- velocity + ((target_loc - location) / cohesion_factor_ppl);
 	}
 	//Reflex to apply separation when people are too close from each other
 	reflex separation {
@@ -162,18 +171,82 @@ species people skills:[moving] {
 		draw sphere(size/3) at: {location.x,location.y,size} color: color;
 	}
 }
+
+species tourist skills:[moving] {
+	point target_loc;
+	float speed <- 5 + rnd(1000) / 1000;
+	point velocity <- {0,0};
+	float heading max: heading + maximal_turn min: heading - maximal_turn;
+	float size <- people_size; 
+	rgb color <- #orange;
+	bool dropped_luggage;
+	bool boarded_shutle;
+		
+	//Reflex to change target when arrived
+	reflex end when: location distance_to target_loc <= 2 * people_size{
+		target_loc <- point(one_of(shuttle_spot));
+		dropped_luggage <- true;
+		write "luggage dropped";
+	}
+	reflex board when: location distance_to target_loc <= 2 * people_size{
+		write "bus shuttle taken";
+		boarded_shutle <- true;
+		do die;
+	}
+	//Reflex to compute the velocity of the agent considering the cohesion factor
+	reflex follow_goal  {
+		velocity <- velocity + ((target_loc - location) / cohesion_factor_tou);
+	}
+	//Reflex to apply separation when people are too close from each other
+	reflex separation {
+		point acc <- {0,0};
+		ask (people at_distance size)  {
+			acc <- acc - (location - myself.location);
+		}  
+		velocity <- velocity + acc;
+	}
+	//Reflex to avoid the different obstacles
+	reflex avoid { 
+		point acc <- {0,0};
+		list<hbf> nearby_obstacles <- (hbf at_distance people_size);
+		loop obs over: nearby_obstacles {
+			acc <- acc - (obs.location - location); 
+		}
+		velocity <- velocity + acc; 
+	}
+	//Reflex to move the agent considering its location, target and velocity
+	reflex move {
+		point old_location <- copy(location);
+		do goto target: location + velocity;
+		if not(self overlaps free_space ) {
+			location <- ((location closest_points_with free_space)[1]);
+		}
+		velocity <- location - old_location;
+	}	
+	
+	aspect default {
+		draw pyramid(size) color: color;
+		draw sphere(size/3) at: {location.x,location.y,size} color: color;
+	}
+}
+
 experiment "PCM_Simulation" type: gui {
 	font regular <- font("Helvetica", 14, # bold);
 	output {
-
+		display graph refresh:every(1#mn){
+			chart "tourist in the city" type: series size:{1,0.5} position: {0,0} {
+				data "Drop off luggage" value: luggage_drop color: #orange;
+				data "People in the station" value: nb_people_existing color: #black;
+			}
+		}
 		display map type:java2D 
 		{
 			species hbf aspect:base;
 			species metro aspect: base ;
 			species sprinter_spot aspect: base ;
 			species shuttle_spot aspect: base ;
-			species entry_points aspect: base;
 			species people;
+			species tourist;
 			species walking_area aspect:base transparency:0.9 ;
 		}
 	}
