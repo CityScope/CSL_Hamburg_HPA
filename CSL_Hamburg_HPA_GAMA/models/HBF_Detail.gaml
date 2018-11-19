@@ -8,12 +8,14 @@
 model HBFDetail
 
 global {
-	file shapefile_hbf <- file("/Users/OldBlueShoe/Google Drive/09 PCM - Public/Working Materials/Gama Model_case area/Hbf-Detail.shp");
-	file shapefile_walking_paths <- file("/Users/OldBlueShoe/Google Drive/09 PCM - Public/Working Materials/Gama Model_case area/Detail_Walking Areas.shp");
-	file shapefile_public_transportation <- file("/Users/OldBlueShoe/Google Drive/09 PCM - Public/Working Materials/Gama Model_case area/Detail_Public Transportation.shp");
-	file shapefile_sprinters <- file("/Users/OldBlueShoe/Google Drive/09 PCM - Public/Working Materials/Gama Model_case area/Detail_Sprinters.shp");
-	file shapefile_shuttle <- file("/Users/OldBlueShoe/Google Drive/09 PCM - Public/Working Materials/Gama Model_case area/Detail_Bus Shuttle.shp");
-	file shapefile_entry_points <- file("/Users/OldBlueShoe/Google Drive/09 PCM - Public/Working Materials/Gama Model_case area/Detail_Entry Points Platforms.shp");
+	string cityGISFolder <- "./../external/";
+	
+	file shapefile_hbf <- file(cityGISFolder + "Hbf-Detail.shp");
+	file shapefile_walking_paths <- file(cityGISFolder + "Detail_Walking Areas.shp");
+	file shapefile_public_transportation <- file(cityGISFolder + "Detail_Public Transportation.shp");
+	file shapefile_sprinters <- file(cityGISFolder + "Detail_Sprinters.shp");
+	file shapefile_shuttle <- file(cityGISFolder + "Detail_Bus Shuttle.shp");
+	file shapefile_entry_points <- file(cityGISFolder + "Detail_Entry Points Platforms.shp");
 	geometry shape <- envelope(shapefile_walking_paths);
 	float step <- 2 #s;
 	int current_hour update: (time / #hour) mod 24;
