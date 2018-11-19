@@ -21,7 +21,7 @@ global {
 	int current_hour update: (time / #hour) mod 24;
 	
 	int nb_people<- rnd(7)+5;
-	int nb_tourist <- rnd(7)+1;
+	int nb_tourist <- rnd(2)+1;
 	int nb_taxis <- 20;
 	int nb_shuttle <- 2;
 	int nb_sprinters <- 1;
@@ -29,16 +29,16 @@ global {
 	float min_speed_ppl <- 0.5 #km / #h;
 	float max_speed_ppl <- 2 #km / #h;
 	geometry free_space;
-	int maximal_turn <- 135; //in degree
+	int maximal_turn <- 360; //in degree
 	int cohesion_factor_ppl <- 1; //must be more than 0
-	int cohesion_factor_tou <- 20;
+	int cohesion_factor_tou <- 10;
 	float people_size <- 2.0;
 	int coming_train;
 	int nb_people_existing;
 	int luggage_drop<-0;
 	
 	reflex update { 
-		coming_train <- rnd(500)+rnd(1000); //trains arriving randomly
+		coming_train <- rnd(500)+rnd(700); //trains arriving randomly
 		nb_people_existing <- length(list(people));
 		luggage_drop <- int(tourist count(each.dropped_luggage));
 	}
@@ -100,10 +100,10 @@ species entry_points{
 				target_loc <- point(one_of(metro));
 				location <- point(myself);
 			}	
-				create species(tourist) number: nb_tourist{
-				speed <- min_speed_ppl + (max_speed_ppl - min_speed_ppl) ;
-				target_loc <- point(one_of(sprinter_spot));
-				location <- point(myself);
+			create species(tourist) number: nb_tourist{
+			speed <- min_speed_ppl + (max_speed_ppl - min_speed_ppl) ;
+			target_loc <- point(one_of(sprinter_spot));
+			location <- point(myself);
 			}	
 		}
 		else {
@@ -132,7 +132,7 @@ species people skills:[moving] {
 	rgb color <- #black;
 		
 	//Reflex to change target when arrived
-	reflex end when: location distance_to target_loc <= 2 * people_size{
+	reflex end when: location distance_to target_loc <= 5 * people_size{
 		do die;
 	}
 	//Reflex to compute the velocity of the agent considering the cohesion factor
@@ -150,7 +150,7 @@ species people skills:[moving] {
 	//Reflex to avoid the different obstacles
 	reflex avoid { 
 		point acc <- {0,0};
-		list<hbf> nearby_obstacles <- (hbf at_distance people_size);
+		list<hbf> nearby_obstacles <- (hbf at_distance (4 * people_size));
 		loop obs over: nearby_obstacles {
 			acc <- acc - (obs.location - location); 
 		}
@@ -180,17 +180,15 @@ species tourist skills:[moving] {
 	float size <- people_size; 
 	rgb color <- #orange;
 	bool dropped_luggage;
-	bool boarded_shutle;
 		
 	//Reflex to change target when arrived
-	reflex end when: location distance_to target_loc <= 2 * people_size{
+	reflex end when: location distance_to target_loc <= 2 * people_size and dropped_luggage = false{
 		target_loc <- point(one_of(shuttle_spot));
 		dropped_luggage <- true;
 		write "luggage dropped";
 	}
-	reflex board when: location distance_to target_loc <= 2 * people_size{
+	reflex board when: location distance_to target_loc <= 2 * people_size and dropped_luggage = true{
 		write "bus shuttle taken";
-		boarded_shutle <- true;
 		do die;
 	}
 	//Reflex to compute the velocity of the agent considering the cohesion factor
