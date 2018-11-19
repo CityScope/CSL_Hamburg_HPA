@@ -1,24 +1,26 @@
 /***
 * Name: HBFDetail
-* Author: JLo
-* Description: 
+* Author: JLopez
+* Description: The model aims to represent the movement of people and tourists in the tran station and surounding area. People arrive by train and go to random destinations. Tourist arrive by train and go to (1) taxi (2) luggage dropoff area and (3) take bus shuttle.
 * Tags: Tag1, Tag2, TagN
 ***/
 
 model HBFDetail
 
 global {
-	file shapefile_hbf <- file("/Users/OldBlueShoe/Google Drive/09 PCM - Public/Working Materials/Gama Model_case area/Hbf-Detail.shp");
-	file shapefile_walking_paths <- file("/Users/OldBlueShoe/Google Drive/09 PCM - Public/Working Materials/Gama Model_case area/Detail_Walking Areas.shp");
-	file shapefile_public_transportation <- file("/Users/OldBlueShoe/Google Drive/09 PCM - Public/Working Materials/Gama Model_case area/Detail_Public Transportation.shp");
-	file shapefile_sprinters <- file("/Users/OldBlueShoe/Google Drive/09 PCM - Public/Working Materials/Gama Model_case area/Detail_Sprinters.shp");
-	file shapefile_shuttle <- file("/Users/OldBlueShoe/Google Drive/09 PCM - Public/Working Materials/Gama Model_case area/Detail_Bus Shuttle.shp");
-	file shapefile_entry_points <- file("/Users/OldBlueShoe/Google Drive/09 PCM - Public/Working Materials/Gama Model_case area/Detail_Entry Points Platforms.shp");
+	string cityGISFolder <- "./../external/";
+	
+	file shapefile_hbf <- file(cityGISFolder + "Hbf-Detail.shp");
+	file shapefile_walking_paths <- file(cityGISFolder + "Detail_Walking Areas.shp");
+	file shapefile_public_transportation <- file(cityGISFolder + "Detail_Public Transportation.shp");
+	file shapefile_sprinters <- file(cityGISFolder + "Detail_Sprinters.shp");
+	file shapefile_shuttle <- file(cityGISFolder + "Detail_Bus Shuttle.shp");
+	file shapefile_entry_points <- file(cityGISFolder + "Detail_Entry Points Platforms.shp");
 	geometry shape <- envelope(shapefile_walking_paths);
-	float step <- 2 #s;
+	float step <- 1 #s;
 	int current_hour update: (time / #hour) mod 24;
 	
-	int nb_people <- 50;
+	int nb_people<-1;
 	int nb_tourists <- 200;
 	int nb_taxis <- 20;
 	int nb_shuttle <- 2;
@@ -31,9 +33,10 @@ global {
 	int cohesion_factor <- 5;
 	float people_size <- 2.0;
 	int coming_train;
+	int platform_nb <- 3;
 	
 	reflex update { //trains arriving randomly
-		coming_train <- rnd(10);
+		coming_train <- rnd(100)+rnd(15);
 	}
 
 	init{
@@ -41,20 +44,15 @@ global {
 		create metro from: shapefile_public_transportation;
 		create sprinter_spot from: shapefile_sprinters;
 		create shuttle_spot from: shapefile_shuttle;
-		create entry_points from: shapefile_entry_points with: [platform::int(read("platform_s"))]; //number of platform taken from shapefile
+		create entry_points from: shapefile_entry_points; //number of platform should be taken from shapefile
 		create walking_area from: shapefile_walking_paths {
 			//Creation of the free space by removing the shape of the buildings (train station complex)
 			free_space <- geometry(walking_area - (hbf + people_size));
 		}
 		free_space <- free_space simplification(1.0);
-		
-		create people number: nb_people {
-		speed <- min_speed_ppl + (max_speed_ppl - min_speed_ppl) ;
-		target_loc <- point(one_of(metro));
-		location <- point(one_of(entry_points));
-		}	
 	}
 }
+
 species hbf{
 	rgb color <- #gray;	
 	aspect base {
@@ -86,21 +84,22 @@ species shuttle_spot{
 species entry_points{
 	rgb color<-#black;	
 	bool has_train <- false;
-	int platform; ////////////////////////////7IT DOESN'T READ THE SHAPEFILE: SHOWS NILL
-	int incoming_train <- nil ;
+	int anden;
+	int incoming_train;
 	
 	reflex train {
 		incoming_train <- coming_train;
-		write platform;
-		if (incoming_train = platform) {
+		anden <- platform_nb;
+		if (incoming_train = anden) {
 			has_train <- true;
-			write has_train;
 			color <- #green;
-			create species(people) number: 20{
-				location <- self.location; ////////////////////////IT CREATES PEOPLE IN RANDOM PLACES, NOT IN THE ENTRY POINTS
-			}	//people coming by train
+			create species(people) number: nb_people{
+				speed <- min_speed_ppl + (max_speed_ppl - min_speed_ppl) ;
+				target_loc <- point(one_of(metro));
+				location <- point(one_of(entry_points /*when: has_train = true*/));
+			}
 		}
-	}
+	}	
 	
 	aspect base {
 		draw square(4) color: color;
@@ -109,7 +108,6 @@ species entry_points{
 
 species walking_area{
 	rgb color <- #pink;	
-	float transparency <- 0.5;
 	aspect base {
 		draw shape color: color;
 	}
@@ -164,7 +162,6 @@ species people skills:[moving] {
 		draw sphere(size/3) at: {location.x,location.y,size} color: color;
 	}
 }
-
 experiment "PCM_Simulation" type: gui {
 	font regular <- font("Helvetica", 14, # bold);
 	output {
@@ -177,7 +174,7 @@ experiment "PCM_Simulation" type: gui {
 			species shuttle_spot aspect: base ;
 			species entry_points aspect: base;
 			species people;
-			species walking_area aspect:base transparency:0.8;
+			species walking_area aspect:base transparency:0.9 ;
 		}
 	}
 }
