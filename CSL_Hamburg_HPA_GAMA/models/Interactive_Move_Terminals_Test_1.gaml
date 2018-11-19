@@ -1,7 +1,7 @@
 /***
-* Name: Test1
-* Author: JLo
-* Description: 
+* Name: Interactive_Move_Terminals_Test_1
+* Author: JLopez
+* Description: Given tourists (cruise passengers) and people in the city (people), the model test how paths of the people change based on real time interaction with the user by modifying (moving,copyng, removing) the destinations.
 * Tags: Tag1, Tag2, TagN
 ***/
 /* Insert your model definition here */
@@ -13,14 +13,15 @@ global {
 	point target;
 	geometry zone <- circle(50);
 	bool can_drop;
-
-	file shape_file_buildings <- file("/Users/OldBlueShoe/Google Drive/09 PCM - Public/Working Materials/Gama Model/buildings.shp");
-	file shape_file_roads <- file("/Users/OldBlueShoe/Google Drive/09 PCM - Public/Working Materials/Gama Model/road.shp");
-	file shape_file_bounds <- file("/Users/OldBlueShoe/Google Drive/09 PCM - Public/Working Materials/Gama Model/bounds.shp");
-	file shape_file_rails <- file("/Users/OldBlueShoe/Google Drive/09 PCM - Public/Working Materials/Gama Model/BahnlinienDISK_HH.shp");
-	file shape_file_transport_hubs <- file("/Users/OldBlueShoe/Google Drive/09 PCM - Public/Working Materials/Gama Model/HaltepunkteBahnlinie.shp");
-	file shape_file_terminals <- file("/Users/OldBlueShoe/Google Drive/09 PCM - Public/Working Materials/Gama Model/Destinations.shp");
-	file shape_hbf <- file("/Users/OldBlueShoe/Google Drive/09 PCM - Public/Working Materials/Gama Model/Hbf.shp");
+	
+	string cityGISFolder <- "./../external/";
+	file shape_file_buildings <- file(cityGISFolder + "buildings.shp");
+	file shape_file_roads <- file(cityGISFolder + "road.shp");
+	file shape_file_bounds <- file(cityGISFolder + "bounds.shp");
+	file shape_file_rails <- file(cityGISFolder + "BahnlinienDISK_HH.shp");
+	file shape_file_transport_hubs <- file(cityGISFolder + "HaltepunkteBahnlinie.shp");
+	file shape_file_terminals <- file(cityGISFolder + "Destinations.shp");
+	file shape_hbf <- file(cityGISFolder + "Hbf.shp");
 	geometry shape <- envelope(shape_file_roads);
 	float step <- 2 #mn;
 	int nb_people <- 20;
@@ -251,7 +252,7 @@ species tourist skills:[moving] {
 	reflex time_to_work when: current_hour = start_work and objective = "resting"{
 		objective <- "working" ;
 		nb_people_arriving <- tourist count(each.objective = "working");
-		the_target <- one_of(terminal);
+		the_target <- point(one_of(terminal));
 	}
 		
 	reflex time_to_go_home when: current_hour = end_work and objective = "working"{
@@ -312,7 +313,7 @@ species taxi skills:[moving] {
 		
 	reflex time_to_work when: current_hour = start_work and objective = "resting"{
 		objective <- "working" ;
-		the_target <- one_of(terminal);
+		the_target <- point(one_of(terminal));
 	}
 		
 	reflex time_to_go_home when: current_hour = end_work and objective = "working"{
