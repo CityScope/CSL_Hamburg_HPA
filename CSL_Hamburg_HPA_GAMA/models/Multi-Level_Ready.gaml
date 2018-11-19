@@ -1,5 +1,11 @@
 /***
 
+* Name: Multi-Level-Ready
+* Author: JLopez
+* Description: Large-scale model. It aims to consider all agents involved in the entire process. Currently not working.
+* Tags: Tag1, Tag2, TagN
+
+
 General idea of the model to build:
 
 	-The overall idea is to create a model to represent the embark and disembarkation of cruise vessels in the city of Hamburg.
@@ -35,13 +41,15 @@ Some weak points:
 model PCM_test20181101
 
 global {
-	file shepefile_Buildings <- file("C:/Users/hij044_admin/Google Drive/09 PCM - Public/Working Materials/Gama Model_all Hamburg/buildings.shp"); /*Write route here*/
-	file shepefile_HBF <- file("C:/Users/hij044_admin/Google Drive/09 PCM - Public/Working Materials/Gama Model_all Hamburg/Hbf.shp"); /*Write route here*/
-	file shepefile_Cruise_Terminals <- file("C:/Users/hij044_admin/Google Drive/09 PCM - Public/Working Materials/Gama Model_all Hamburg/Cruise_terminals.shp"); /*Write route here*/
-	file shepefile_Parkings <- file("C:/Users/hij044_admin/Google Drive/09 PCM - Public/Working Materials/Gama Model_all Hamburg/Parkings.shp"); /*Write route here*/
-	file shepefile_ZOB <- file("C:/Users/hij044_admin/Google Drive/09 PCM - Public/Working Materials/Gama Model_all Hamburg/ZOB.shp"); /*Write route here*/
-	file shepefile_Dropoffarea_HBF <- file("C:/Users/hij044_admin/Google Drive/09 PCM - Public/Working Materials/Gama Model_all Hamburg/Dropoffarea.shp"); /*Write route here*/
-	file shepefile_Foursquare_venues <- file("C:/Users/hij044_admin/Google Drive/09 PCM - Public/Working Materials/Gama Model_all Hamburg/FS_venues.shp"); /*Write route here*/
+	string cityGISFolder <- "./../external/";
+	
+	file shepefile_Buildings <- file(cityGISFolder + "buildings.shp"); 
+	file shepefile_HBF <- file(cityGISFolder + "Hbf.shp"); 
+	file shepefile_Cruise_Terminals <- file(cityGISFolder + "Cruise_terminals.shp");
+	file shepefile_Parkings <- file(cityGISFolder + "Parkings.shp");
+	file shepefile_ZOB <- file(cityGISFolder + "ZOB.shp");
+	file shepefile_Dropoffarea_HBF <- file(cityGISFolder + "Dropoffarea.shp");
+	file shepefile_Foursquare_venues <- file(cityGISFolder + "FS_venues.shp"); 
 
 	geometry shape <- envelope (shapefile_Buildings); /*The boundaries of the experiment match the boundaries of the Buildings layer*/
 	geometry free_space; /*Free space inbetween buildings*/
