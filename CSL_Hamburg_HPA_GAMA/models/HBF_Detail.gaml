@@ -24,14 +24,19 @@ global {
 	file sprinter_icon <- image_file(cityGISFolder + "/images/Sprinter.png");
 	file shuttle_icon <- image_file(cityGISFolder + "/images/Shuttle.png");
 	
+	/*/file grid_data <- file(cityGISFolder + "/images/png hbf_modified-2.tif");
+	geometry shape <- envelope(shapefile_roads);	
+	float max_value;
+	float min_value;/*/
+	
 	geometry shape <- envelope(shapefile_walking_paths);
 	graph the_graph;
 	float step <- 1#s;
-	int current_hour update: (time / #hour) mod 24;
 	
 	int nb_taxis <- 20;
 	int nb_shuttle <- 2;
 	int nb_sprinters <- 3 parameter: true;
+	int nb_crew <- 2 parameter: true;
 	
 	float min_speed_ppl <- 0.5 #km / #h;
 	float max_speed_ppl <- 2 #km / #h;
@@ -41,11 +46,14 @@ global {
 	int cohesion_factor_tou <- 100;
 	float people_size <- 1.0;
 	int coming_train;
+	int schedule;
 	int nb_people_existing;
 	int nb_tourist_disoriented;
 	int nb_tourist_to_shuttles;
 	float perception_distance <- 600.0 parameter: true;
-	int precision <- 120 parameter: true;
+	int precision <- 2 /*/120/*/ parameter: true;
+	
+	float train_freq <- 1.0 parameter: true;
 
 /////////User interaction starts here
 	list<shuttle_spot> moved_agents ;
@@ -56,11 +64,23 @@ global {
 /////////User interaction ends here
 	
 	reflex update { 
-		coming_train <- rnd(500)+rnd(700); //trains arriving randomly when the sum of these numbers is 1-8.
+		schedule <- cycle +1; //no trainss arriving the first hour
+		if (schedule mod (3600*train_freq) = 0){
+			coming_train <- rnd(8); //trains arriving every hour to one platform 1 to 8.
+		} else {
+			coming_train <- 0;
+		}
 		nb_people_existing <- length(list(people));
 		nb_tourist_disoriented <- int(tourist count(each.knows_where_to_go =  false));
 		nb_tourist_to_shuttles <- int(tourist count(each.knows_where_to_go));
-	}
+
+		/*/Exporting in CSV for visualization in CityScopes
+		save tourist to: (cityGISFolder + "/output/output_tourist.csv") type: "csv" rewrite: true;
+		save people to: (cityGISFolder + "/output/output_people.csv") type: "csv" rewrite: true;
+		save sprinter to: (cityGISFolder + "/output/output_sprinter.csv") type: "csv" rewrite: true;
+		save shuttle_spot to: (cityGISFolder + "/output/output_shuttle_spot.csv") type: "csv" rewrite: true;
+		save world to: (cityGISFolder + "/output/output_world.csv") type: "csv" rewrite: true; /*/
+	} 
 	
 /////////User interaction starts here
 	action kill {
@@ -108,12 +128,17 @@ global {
 	}
 ////////////User interaction ends here
 
-	init{			
+	init{		
+		/*/max_value <- cell max_of (each.grid_value);
+		min_value <- cell min_of (each.grid_value);
+		ask cell {
+			int val <- int(255 * ( 1  - (grid_value - min_value) /(max_value - min_value)));
+			color <- rgb(val,val,val);
+		}/*/	
 		create hbf from: shapefile_hbf;
 		create metro from: shapefile_public_transportation;
 		create roads from: shapefile_roads;
 		the_graph <- as_edge_graph(list(roads));
-		
 		create dropoff_area from: shapefile_dropoff_area;
 		create shuttle_spot from: shapefile_shuttle;
 		create entry_points from: shapefile_entry_points with: [platform_nb::int(read("platform_s"))]; //number of platform taken from shapefile
@@ -125,8 +150,14 @@ global {
 		create sprinter number:nb_sprinters {
 			location <- any_location_in(one_of(roads));
 		}
+		create crew number:nb_crew {
+			location <- any_location_in(one_of(dropoff_area));
+		}
 	}
 }
+
+/*/grid cell file: grid_data;/*/
+
 species roads{}
 
 species hbf{
@@ -144,32 +175,10 @@ species metro{
 }
 
 species dropoff_area control: fsm{
-	rgb color <- #white;
+	rgb color <- #blue;	
 	bool has_sprinter;
-	list<tourist> tou_inside;
-	list<sprinter> sp_inside;
-	
-	reflex update_lists{
-		tou_inside <- tourist inside (self);
-		sp_inside <- sprinter inside (self);
-	}
-	
-	reflex with_sprinter {
-		if length(sp_inside) > 0{
-			has_sprinter<-true;
-		}
-	}
-	
-	state empty initial:true {
-		transition to: with_tourist when: length(tou_inside) > 1;
-	}
-	
-	state with_tourist {
-		transition to: empty when: length(tou_inside) < 2;
-	}
-	
 	aspect base {
-		draw shape;
+		draw shape color:color;
 	}
 }
 
@@ -189,23 +198,19 @@ species shuttle_spot{
 }
 
 species entry_points{
-	bool has_train <- false;
 	int platform_nb;
 	
 	reflex train {
 		if (coming_train = platform_nb) {
-			has_train <- true;
-			
+	
 			create species(people) number: rnd(15){
 			speed <- min_speed_ppl + (max_speed_ppl - min_speed_ppl) ;
 			target_loc <- point(one_of(metro));
 			location <- point(myself);
 			}	
-			create species(tourist) number: rnd(1)+1{
+			create species(tourist) number: rnd(2)+1{
 			speed <- min_speed_ppl + (max_speed_ppl - min_speed_ppl) ;
-	  		target_loc <- point(one_of(sprinter));
 			location <- point(myself);
-			luggage_count <- rnd(3)+1;
 			}	
 		}
 	}	
@@ -264,49 +269,74 @@ species sprinter skills:[moving] control:fsm {
 	}
 	
 	state full {
-		target_loc <- point(one_of(shuttle_spot));////////// This should represent the shuttle_spots
+		target_loc <- point(one_of(shuttle_spot));////////// This should represent the terminals
 		do depart;
 		transition to: empty when: (location distance_to target_loc <5);
 	}
 	
 	aspect default {
-		draw icon size:12 rotate: my heading ;
+		draw icon size:7 rotate: my heading ;
 	}
 }
 
+species crew skills:[moving] control:fsm {
+	point target_loc;
+	point origin<- any_location_in(one_of(dropoff_area));
+	int carrying_luggage;
+	
+	action carry_luggage{
+		do goto target: target_loc;
+		if location distance_to target_loc < 3 {
+			ask species(sprinter) closest_to self{
+				luggage_capacity <- luggage_capacity - myself.carrying_luggage;
+			}
+		carrying_luggage <- 0;
+		}
+	}
+	
+	state with_luggage {
+		target_loc <- point(one_of(sprinter /*/where(each.state = 'loading')/*/));
+		do carry_luggage;
+		transition to: waiting  when: carrying_luggage < 1;
+	}
+	
+	state waiting initial:true{
+		do goto target: origin;
+		transition to: with_luggage  when: carrying_luggage > 0;
+	}
+	aspect default {
+		draw circle(0.5) color:#black ;
+	}	
+}
+
 species tourist skills:[moving] control:fsm {
-	point target_loc <- (point(one_of(sprinter where(each.state = 'loading'))));
+	point target_loc <- (point(one_of(crew)));
 	float speed <- 5 + rnd(1000) / 1000;
 	point velocity <- {0,0};
-	float size <- people_size; 
 	bool dropped_luggage;
 	bool knows_where_to_go;
 	geometry perceived_area;
-	point target;
-	int luggage_count;
+	int luggage_count <- rnd(3)+1;
 	bool dropping_now;
 	float wating_time;
 	int tourist_line;
 	image_file icon <- tourist_icon;
 	
 	 //Stay there and waits for turn. Linear geometry of the queue to define. Waiting time to define
-	reflex wait_line when: location distance_to target_loc <= 2 * people_size and dropped_luggage = false{
+	reflex wait_line when: location = target_loc and dropped_luggage = false{
 		dropping_now <- true;
 		tourist_line <- tourist count(each.state = 'dropping_luggage');
 		wating_time <- wating_time + 0.01;
 		if wating_time > (float(tourist_line)+1) { //They should be waiting in line
 			write 'Lugagge dropped';	
-		}
-	}
-	
-	reflex drop_off when: one_of(dropoff_area) intersects self and dropping_now  and wating_time > (float(tourist_line)+1) {
-		target_loc <- point(one_of(shuttle_spot));
+			target_loc <- point(one_of(shuttle_spot));
 		dropped_luggage <- true;
 		knows_where_to_go <- true;
-		ask one_of(sprinter){
-			luggage_capacity <- luggage_capacity - myself.luggage_count;
+		ask species(crew) closest_to self{
+			carrying_luggage <- carrying_luggage + myself.luggage_count;
 		}
 		luggage_count <- 0;
+		}
 	}
 	
 	reflex board when: location = target_loc and dropped_luggage {
@@ -342,21 +372,12 @@ species tourist skills:[moving] control:fsm {
 		}
 	}	
 	
-	state dropping_luggage{
-		enter{
-			knows_where_to_go <- true;
-			perceived_area <- nil;
-		}
-		do go;
-	}
-	
 	state found{
 		enter{
 			knows_where_to_go <- true;
 			perceived_area <- nil;
 		}
 		do go;
-		transition to: dropping_luggage when: dropping_now;
 	}
 	
 	state looking_for initial: true {
@@ -388,14 +409,18 @@ species tourist skills:[moving] control:fsm {
 
 experiment "PCM_Simulation" type: gui {
 	font regular <- font("Helvetica", 14, # bold);
+
 	output {
+		/*/display test {
+			grid cell lines: #black;	
+		}/*/
 		display pie refresh:every(1#mn){
 			chart "tourist in the city" type: pie size:{1,1} position: {0,0} {
-				data "Oriented tourists" value: nb_tourist_disoriented color: #orange;
-				data "Tourists to the shuttles" value: nb_tourist_to_shuttles color: #olive;
+				data "Disoriented tourists" value: nb_tourist_disoriented color: #orange;
+				data "Oriented tourists" value: nb_tourist_to_shuttles color: #olive;
 			}
 		}	
-				display series refresh:every(1.5#mn){
+		display series refresh:every(1.5#mn){
 			chart "tourist in the city" type: series size:{1,0.5} position: {0,0} {
 				data "Disoriented tourists" value: nb_tourist_disoriented color: #orange;
 				data "Tourists to the shuttles" value: nb_tourist_to_shuttles color: #olive;
@@ -411,8 +436,9 @@ experiment "PCM_Simulation" type: gui {
 			species dropoff_area aspect: base transparency: 0.85;
 			species tourist aspect: default;
 			//species tourist aspect: perception transparency:0.97;
-			species walking_area aspect:base transparency:0.96 ;
+			species walking_area aspect:base transparency:0.93 ;
 			species sprinter aspect: default;
+			species crew aspect: default;
 		
 ////////////////////User interaction starts here		
 			event mouse_move action: move;
