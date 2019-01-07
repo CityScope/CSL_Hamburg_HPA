@@ -9,7 +9,7 @@
 model HBFDetail
 
 global {
-	string cityGISFolder <- "./../external/";
+	string cityGISFolder <- "/external/hbf-model/";
 	file shapefile_hbf <- file(cityGISFolder + "Hbf-Detail.shp");
 	file shapefile_walking_paths <- file(cityGISFolder + "Detail_Walking Areas.shp");
 	file shapefile_public_transportation <- file(cityGISFolder + "Detail_Public Transportation.shp");
@@ -17,6 +17,8 @@ global {
 	file shapefile_shuttle <- file(cityGISFolder + "Detail_Bus Shuttle.shp");
 	file shapefile_entry_points <- file(cityGISFolder + "Detail_Entry Points Platforms.shp");
 	file shapefile_roads <- file(cityGISFolder + "Detail_Road.shp");
+	file crew_spots <- file(cityGISFolder + "crew_spots.shp");
+	file sprinter_spots <- file(cityGISFolder + "sprinter_spots.shp");
 	
 	file tourist_icon <- image_file(cityGISFolder + "/images/Tourist.gif");
 	file person_icon <- image_file(cityGISFolder + "/images/Person.gif");
@@ -35,8 +37,10 @@ global {
 	
 	int nb_taxis <- 20;
 	int nb_shuttle <- 2;
-	int nb_sprinters <- 3 parameter: true;
+	int nb_sprinters <- 2 parameter: true;
 	int nb_crew <- 2 parameter: true;
+	int nb_people <- 25 parameter:true;
+	int nb_tourist <- 4 parameter:true;
 	
 	float min_speed_ppl <- 0.5 #km / #h;
 	float max_speed_ppl <- 2 #km / #h;
@@ -138,6 +142,8 @@ global {
 		create hbf from: shapefile_hbf;
 		create metro from: shapefile_public_transportation;
 		create roads from: shapefile_roads;
+		create crew_spot from: crew_spots;
+		create sprinter_spot from: sprinter_spots;
 		the_graph <- as_edge_graph(list(roads));
 		create dropoff_area from: shapefile_dropoff_area;
 		create shuttle_spot from: shapefile_shuttle;
@@ -151,7 +157,7 @@ global {
 			location <- any_location_in(one_of(roads));
 		}
 		create crew number:nb_crew {
-			location <- any_location_in(one_of(dropoff_area));
+			location <- point(one_of(crew_spot));
 		}
 	}
 }
@@ -159,6 +165,17 @@ global {
 /*/grid cell file: grid_data;/*/
 
 species roads{}
+species crew_spot{}
+species sprinter_spot control:fsm{
+	
+	state unavailable {
+		transition to: available when: location distance_to one_of(sprinter) >= 1;
+	}
+	
+	state available initial:true{
+		transition to:unavailable when: location distance_to one_of(sprinter) < 1;
+	}
+}
 
 species hbf{
 	rgb color <- #gray;	
@@ -203,12 +220,12 @@ species entry_points{
 	reflex train {
 		if (coming_train = platform_nb) {
 	
-			create species(people) number: rnd(15){
+			create species(people) number: nb_people{
 			speed <- min_speed_ppl + (max_speed_ppl - min_speed_ppl) ;
 			target_loc <- point(one_of(metro));
 			location <- point(myself);
 			}	
-			create species(tourist) number: rnd(2)+1{
+			create species(tourist) number: nb_tourist{
 			speed <- min_speed_ppl + (max_speed_ppl - min_speed_ppl) ;
 			location <- point(myself);
 			}	
@@ -258,8 +275,8 @@ species sprinter skills:[moving] control:fsm {
 	}
 	
 	state empty initial:true {
-		luggage_capacity <- 5;
-		target_loc <- any_location_in(one_of(dropoff_area));
+		luggage_capacity <- 10;
+		target_loc <- point(one_of(sprinter_spot where (each.state = 'available')));
 		transition to: loading when: (location distance_to one_of(dropoff_area)) <1;
 		do depart;
 	}
@@ -281,12 +298,17 @@ species sprinter skills:[moving] control:fsm {
 
 species crew skills:[moving] control:fsm {
 	point target_loc;
-	point origin<- any_location_in(one_of(dropoff_area));
+	point origin<- point(one_of(crew_spot));
 	int carrying_luggage;
 	
 	action carry_luggage{
+		if bool(one_of(sprinter where(each.state = 'loading'))) {
+			target_loc <- point(one_of(sprinter where(each.state = 'loading')));
+		}else{
+			target_loc <- location;
+		}
 		do goto target: target_loc;
-		if location distance_to target_loc < 3 {
+		if location distance_to one_of(sprinter) < 1 {
 			ask species(sprinter) closest_to self{
 				luggage_capacity <- luggage_capacity - myself.carrying_luggage;
 			}
@@ -294,15 +316,22 @@ species crew skills:[moving] control:fsm {
 		}
 	}
 	
-	state with_luggage {
-		target_loc <- point(one_of(sprinter /*/where(each.state = 'loading')/*/));
+	state unavailable {
 		do carry_luggage;
-		transition to: waiting  when: carrying_luggage < 1;
+		transition to: available  when: carrying_luggage < 1;
 	}
 	
-	state waiting initial:true{
+	state busy {
+		transition to: unavailable when: carrying_luggage > 0;
+		transition to: available when: carrying_luggage > 1 and self distance_to point(tourist)>2;
+	}
+	
+	state available initial:true{
 		do goto target: origin;
-		transition to: with_luggage  when: carrying_luggage > 0;
+		if location = origin{
+			}
+		transition to: unavailable when: carrying_luggage > 0;
+		transition to: busy when: self.location distance_to point(tourist)<3;
 	}
 	aspect default {
 		draw circle(0.5) color:#black ;
@@ -310,7 +339,7 @@ species crew skills:[moving] control:fsm {
 }
 
 species tourist skills:[moving] control:fsm {
-	point target_loc <- (point(one_of(crew)));
+	point target_loc;
 	float speed <- 5 + rnd(1000) / 1000;
 	point velocity <- {0,0};
 	bool dropped_luggage;
@@ -318,24 +347,30 @@ species tourist skills:[moving] control:fsm {
 	geometry perceived_area;
 	int luggage_count <- rnd(3)+1;
 	bool dropping_now;
-	float wating_time;
+	float waiting_time;
 	int tourist_line;
 	image_file icon <- tourist_icon;
-	
-	 //Stay there and waits for turn. Linear geometry of the queue to define. Waiting time to define
-	reflex wait_line when: location = target_loc and dropped_luggage = false{
-		dropping_now <- true;
-		tourist_line <- tourist count(each.state = 'dropping_luggage');
-		wating_time <- wating_time + 0.01;
-		if wating_time > (float(tourist_line)+1) { //They should be waiting in line
-			write 'Lugagge dropped';	
-			target_loc <- point(one_of(shuttle_spot));
-		dropped_luggage <- true;
-		knows_where_to_go <- true;
-		ask species(crew) closest_to self{
-			carrying_luggage <- carrying_luggage + myself.luggage_count;
-		}
-		luggage_count <- 0;
+
+	//Go to the dropoff_area, wait for turn and drop luggage
+	reflex go_to_dropoffarea when: dropped_luggage = false {
+		if bool(one_of(crew where (each.state = 'available'))){
+			target_loc <- (point(one_of(crew where (each.state = 'available'))))+1;
+			if location = target_loc {
+				dropping_now <- true;
+				tourist_line <- tourist count(each.state = 'dropping_luggage');
+				waiting_time <- waiting_time + 0.02;
+				if waiting_time > (float(tourist_line)+1) {
+					write 'Lugagge dropped';	
+					target_loc <- point(one_of(shuttle_spot));
+				dropped_luggage <- true;
+				ask species(crew) closest_to self{
+					carrying_luggage <- carrying_luggage + myself.luggage_count;
+				}
+				luggage_count <- 0;
+				}
+			}
+		}else{
+			target_loc <- point(one_of(crew_spot))+7+rnd(10);
 		}
 	}
 	
@@ -350,14 +385,12 @@ species tourist skills:[moving] control:fsm {
 	
 	//If they perceive the drop_off area, they go there. If they don't, they keep looking for it.
 	action go {
-		if knows_where_to_go  {
 			point old_location <- copy(location);
 			do goto target: target_loc on: (free_space);
 			if not(self overlaps free_space ) {
 			location <- ((location closest_points_with free_space)[1]);
 			}
 			velocity <- location - old_location;
-		}
 	}
 	
 	action look_for { 
@@ -366,7 +399,7 @@ species tourist skills:[moving] control:fsm {
 		} else {
 			point old_location <- copy(location);
 			do goto target: (any_location_in(perceived_area intersection geometry(walking_area))) on: (free_space);
-			if not(self overlaps free_space ) {
+			if not(self overlaps free_space or tourist) {
 			location <- ((location closest_points_with free_space)[1]);
 			}
 		}
