@@ -17,27 +17,35 @@ global {
 	file<geometry> shapefile_roads <- shape_file(cityGISFolder + "Detail_Road.shp");
 	file crew_spots <- file(cityGISFolder + "crew_spots.shp");
 	file sprinter_spots <- file(cityGISFolder + "sprinter_spots.shp");
-	file pedestrian_paths <- file(cityGISFolder + "pedestrian_path.shp");
+	file pedestrian_paths <- file(cityGISFolder + "pedestrian_path_complex.shp");
+	file boundary <- file(cityGISFolder + "Bounds.shp");
 	
+	file metro_lines <- file(cityGISFolder + "ambiance/Metro Lines.shp");
+	file road_traffic <- file(cityGISFolder + "ambiance/Traffic.shp");
+	file road_traffic_origin <- file(cityGISFolder + "ambiance/Traffic-origin.shp");
+	file road_traffic_destination <- file(cityGISFolder + "ambiance/Traffic-destination.shp");
+	
+	//file site_plan <- image_file(cityGISFolder + "Site Plan.tif");
 	file tourist_icon <- image_file(cityGISFolder + "/images/Tourist.gif");
 	file person_icon <- image_file(cityGISFolder + "/images/Person.gif");
 	file ubahn_icon <- image_file(cityGISFolder + "/images/Ubahn.png");
 	file sprinter_icon <- image_file(cityGISFolder + "/images/Sprinter.png");
 	file shuttle_icon <- image_file(cityGISFolder + "/images/Shuttle.png");
 		
-	geometry shape <- envelope(shapefile_walking_paths);
+	geometry shape <- envelope(boundary);
 	graph the_graph;
 	graph network;
+	graph network_traffic;
+	graph network_metro;
 	
 	float step <- 1#s;
 	
 	int nb_taxis <- 20;
 	int nb_shuttle <- 2;
-	int nb_sprinters <- 2 parameter: true;
+	int nb_sprinters <- 3 parameter: true;
 	int nb_crew <- 2 parameter: true;
-	int nb_people <- 25 parameter:true;
-	int nb_tourist <- 4 parameter:true;
-	
+	int max_nb_people <- 200 parameter:true;
+	int max_nb_tourist <- 2500 parameter:true; // this should be taken from the CSV with vessel schedules
 	
 	float min_speed_ppl <- 0.5 #km / #h;
 	float max_speed_ppl <- 2 #km / #h;
@@ -48,9 +56,13 @@ global {
 	float people_size <- 1.0;
 	int coming_train;
 	int schedule;
-	float perception_distance <- 600.0 parameter: true;
+	float perception_distance <- 100.0 parameter: true; //Gehl social field of vision
 	
 	float train_freq <- 1.0 parameter: true;
+	int current_hour <- 5;
+	int current_day;
+	int nb_tourist;
+	int nb_people;
 
 	int nb_tourists update: length(tourist);
 	int nb_tourists_dropping_luggage update: tourist count each.dropping_now;
@@ -67,19 +79,56 @@ global {
 /////////User interaction ends here
 	
 	reflex update { 
-		schedule <- cycle +1; //no trainss arriving the first hour
-		if (schedule mod (3600*train_freq) = 0){
-			coming_train <- rnd(8); //trains arriving every hour to one platform 1 to 8.
-		} else {
-			coming_train <- 0;
-		}
+		coming_train <- rnd(8); //trains arriving every hour to one platform 1 to 8.
 		nb_tourists <- length(tourist);
 		nb_tourists_dropping_luggage <- tourist count each.dropping_now;
 		nb_tourists_to_drop_off <- tourist count (each.knows_where_to_go and not each.dropped_luggage and not each.dropping_now);
 		nb_tourists_disoriented <- tourist count (not each.knows_where_to_go);
-		nb_tourists_to_shuttles <- tourist count each.dropped_luggage;
-		
+		nb_tourists_to_shuttles <- tourist count each.dropped_luggage;		
 	} 
+	
+	reflex time_update when: every(1#hour) {
+		current_hour <- current_hour +1;
+		if current_hour > 23{
+			current_hour <- 0;
+		}
+		write "Day: " + string (current_day) + " Hour: " + string(current_hour) + ":00" ;
+		if current_hour mod 24 = 0{
+			current_day <- current_day+1;
+		}
+	}
+	
+	reflex time_peaks { 				//need to ajust to match the activity curve on IG
+		nb_tourist <- int(max_nb_tourist*0.02);
+		if current_hour < 6{
+			nb_people <- int(max_nb_people * 0.01);
+			nb_tourist <- 0;
+		}
+		if current_hour > 5 and current_hour < 8{
+			nb_people <- int(max_nb_people * 0.05);
+			nb_tourist <- int(nb_tourist *0.05);	
+		}
+		if current_hour > 7 and current_hour < 12{
+			nb_people <- int(max_nb_people * 0.25);
+			nb_tourist <- int(nb_tourist *0.1);	
+		}
+		if current_hour > 11 and current_hour < 15{
+			nb_people <- int(max_nb_people * 0.15);
+			nb_tourist <- int(nb_tourist *0.5);	
+		}
+		if current_hour > 11 and current_hour < 15{
+			nb_people <- int(max_nb_people * 0.15);
+			nb_tourist <- int(nb_tourist *0.25);	
+		}
+		if current_hour > 14 and current_hour < 18{
+			nb_people <- int(max_nb_people * 0.35);
+			nb_tourist <- int(nb_tourist *0.1);	
+		}
+		if current_hour > 17 and current_hour < 24{
+			nb_people <- int(max_nb_people * 0.05);
+			nb_tourist <- 0;	
+		}
+	}
 	
 /////////User interaction starts here
 	action kill {
@@ -136,7 +185,7 @@ global {
 		the_graph <- as_edge_graph(roads);
 		create dropoff_area from: shapefile_dropoff_area;
 		create shuttle_spot from: shapefile_shuttle;
-		create entry_points from: shapefile_entry_points with: [platform_nb::int(read("platform_s"))]; //number of platform taken from shapefile
+		create entry_points from: shapefile_entry_points with: [platform_nb::int(read("platform"))]; //number of platform taken from shapefile
 		create walking_area from: shapefile_walking_paths {
 			//Creation of the free space by removing the shape of the buildings (train station complex)
 			free_space <- geometry(walking_area);
@@ -153,9 +202,15 @@ global {
 			spot.current_crew <- self;
 			location <- spot.location;
 		}
-		
+		create metro_line from:metro_lines;
+		network_metro <- as_edge_graph(metro_lines) with_optimizer_type "FloydWarshall";
 		create pedestrian_path from:pedestrian_paths;
-		network <- as_edge_graph(pedestrian_path) with_optimizer_type "FloydWarshall";	 	
+		network <- as_edge_graph(pedestrian_path) with_optimizer_type "FloydWarshall";	 
+		/*create traffic_road from:road_traffic;
+		network_traffic <- as_edge_graph(traffic_road) with_optimizer_type "FloydWarshall";	
+		
+		create traffic_origin from:road_traffic_origin;
+		create traffic_destination from:road_traffic_destination;*/
 	}
 }
 
@@ -168,13 +223,51 @@ species pedestrian_path {
 species obstacle {
 	geometry free_space;
 }
+/*
+species car skills: [moving]{
+	point final_target <- point(one_of(traffic_destination));
+	
+	reflex end when: (location distance_to final_target) <= 10{
+		do die;
+	}
 
+	reflex move {
+		do goto target: final_target on: network_traffic;
+	}	
+	
+	aspect default {
+		draw square(1) color: #pink;
+	}
+}
 
+species traffic_origin{
+	reflex create_cars when: every(50#cycle){
+		create car number: 1 with: [location::location]{		
+		}
+	}
+}
+species traffic_destination{}
+species traffic_road{} */
 species roads{}
+species metro_line{
+	aspect default {
+		draw shape color: #gray;
+	}
+}
+
 species crew_spot{
 	crew current_crew;
 	list<tourist> waiting_tourists;
+	aspect base {
+		int i<-0;
+		loop t over:waiting_tourists{
+			//draw circle (1) at:{t.location.x+rnd(-3.0,3.0),t.location.y+rnd(-3.0,3.0)} color:#red ;	
+			draw circle (1) at:{t.location.x+i,t.location.y+i*3} color:rgb(246,232,198) ;
+			i<-i+1;	
+		}
+	} 
 }
+
 species sprinter_spot control:fsm{
 	
 	state unavailable {
@@ -191,16 +284,25 @@ species sprinter_spot control:fsm{
 }
 
 species hbf{
-	rgb color <- #gray;	
+	//rgb color <- #gray;	
 	aspect base {
-		draw shape color: color;
+		//draw shape /*depth:15*/ color: color; //make depth correspond to height in shapefile
+		draw shape border: #white empty:true;
 	}
 }
 
 species metro{
-		image_file icon <- ubahn_icon;
+	image_file icon <- ubahn_icon;
+		
+	reflex create_opeople when: every(100 #cycle){
+		create people number: nb_people/10 with: [location::location]{
+				speed <- min_speed_ppl + (max_speed_ppl - min_speed_ppl) ;
+				final_target <- point(one_of(metro));
+			}	
+		}
+		
 	aspect base {
-		draw icon size:8;
+		draw icon size:8 rotate:180;
 	}
 }
 
@@ -230,7 +332,7 @@ species shuttle_spot{
 species entry_points{
 	int platform_nb;
 	
-	reflex train when: every(1000 #cycle){
+	reflex train when: every(15#minute){
 		if (coming_train = platform_nb) {
 	
 			create people number: nb_people with: [location::location]{
@@ -259,6 +361,7 @@ species walking_area{
 species people skills: [moving] {
 	point final_target;
 	float size <- people_size; 
+	float speed <-gauss(3,1) #km/#h min: 1.0;
 	image_file icon <- person_icon;
 	
 	reflex end when: (location distance_to final_target) <= 10{
@@ -266,21 +369,22 @@ species people skills: [moving] {
 	}
 
 	reflex move {
-		do goto target: final_target on: network;
+		do goto target: final_target on: network speed:speed;
 	}	
 	
 	aspect default {
-		draw icon size:3 rotate: my heading;
+		draw circle(1) color: rgb(246,232,198);
 	}
 }
 
 species sprinter skills:[moving] control:fsm {
 	point target_loc;
-	int luggage_capacity <- 10;
+	int luggage_capacity <- 1000;
 	image_file icon <- sprinter_icon;
+	float speed <- 50 #km/#h;
 	
 	action depart {
-		do goto target: target_loc on:the_graph;
+		do goto target: target_loc on:the_graph speed:speed;
 	}
 	
 	state empty initial:true {
@@ -369,14 +473,14 @@ species crew skills:[moving] control:fsm {
 		transition to: go_to_sprinter when: not empty(spot.waiting_tourists);
 	}
 	aspect default {
-		draw circle(3) color:color;
+		draw circle(1) color:color;
 	}
 }
 
 species tourist skills:[moving] control:fsm {
-	float speed <-gauss(5,1) #km/#h min: 2.0;
+	float speed <-gauss(3,1) #km/#h min: 1.0;
 	bool dropped_luggage;
-	int luggage_count <- rnd(3)+1;
+	int luggage_count <- rnd(1)+1;
 	bool dropping_now <- false;
 	float waiting_time;
 	int tourist_line;
@@ -391,7 +495,7 @@ species tourist skills:[moving] control:fsm {
 		if (final_target = nil) {
 			final_target <- any_location_in(free_space);
 		}
-		do goto target: final_target on: network;
+		do goto target: final_target on: network speed:speed;
 		if (self distance_to final_target < 5.0) {
 			final_target <- nil;
 		}
@@ -405,10 +509,9 @@ species tourist skills:[moving] control:fsm {
 			final_target <- the_spot.location;
 			knows_where_to_go <- true;
 		}
-		do goto target: final_target on: network;
+		do goto target: final_target on: network speed:speed;
 		transition to: drop_off_luggage when: (self distance_to final_target) < 10.0;
 	}
-	
 	
 	state drop_off_luggage {
 		enter {
@@ -420,55 +523,56 @@ species tourist skills:[moving] control:fsm {
 	state go_to_the_bus  {
 		enter {
 			dropping_now <- false;
-			final_target <- point(one_of(metro));
+			final_target <- point(one_of(shuttle_spot));
 		}
-		do goto target: final_target on: network;
+		do goto target: final_target on: network speed:speed;
 		if (location distance_to final_target) < 10.0  {
 			do die;
 		}
 	}
 	
-	
-	
 	aspect default {
-		draw icon size: 3 rotate: my heading;
+		draw circle(1) color: rgb(246,232,198);
 	}
-
 }
 
 experiment "PCM_Simulation" type: gui {
-	font regular <- font("Helvetica", 14, # bold);
+	font regular <- font("Helvetica Neue", 12, # bold);
 
 	output {
 		display charts refresh:every(1#mn){
-			chart "tourist in the city" type: pie size:{1,0.5} position: {0,0}background: #lightgray {
-				data "Disoriented tourists" value: nb_tourists_disoriented color: #red;
-				data "Tourists going to the luggage drop off area" value: nb_tourists_to_drop_off color: #orange;
-				data "Tourists dropping off their luggage" value: nb_tourists_dropping_luggage color: #yellow;
-				data "Tourists going to the shuttles" value: nb_tourists_to_shuttles color: #green;
+			chart "Tourist in Central Station" type: pie size:{1,0.5} position: {0,0}background: rgb(40,40,40) axes: #white color: #white legend_font:("Helvetica Neue") label_font:("Helvetica Neue") tick_font:("Helvetica Neue") title_font:("Helvetica Neue"){
+				data "Disoriented tourists" value: nb_tourists_disoriented color: rgb(245,213,236);
+				data "Tourists going to the luggage drop off area" value: nb_tourists_to_drop_off color: rgb(206,233,249);
+				data "Tourists dropping off their luggage" value: nb_tourists_dropping_luggage color: rgb(246,232,198);
+				data "Tourists going to the shuttles" value: nb_tourists_to_shuttles color: rgb(200,200,200);
 				
 			}
-			chart "tourist in the city" type: series size:{1,0.5} position: {0,0.5} background: #lightgray{
-				data "Disoriented tourists" value: nb_tourists_disoriented color: #red;
-				data "Tourists going to the luggage drop off area" value: nb_tourists_to_drop_off color: #orange;
-				data "Tourists dropping off their luggage" value: nb_tourists_dropping_luggage color: #yellow;
-				data "Tourists going to the shuttles" value: nb_tourists_to_shuttles color: #green;
-				data "Tourists in the station" value: nb_tourists color: #black;
+			chart "Tourist in Central Station" type: series size:{1,0.5} position: {0,0.5} background: rgb(40,40,40 ) axes: #white color: #white legend_font:("Helvetica Neue") label_font:("Helvetica Neue") tick_font:("Helvetica Neue") title_font:("Helvetica Neue"){
+				data "Disoriented tourists" value: nb_tourists_disoriented color: rgb(245,213,236);
+				data "Tourists going to the luggage drop off area" value: nb_tourists_to_drop_off color: rgb(206,233,249);
+				data "Tourists dropping off their luggage" value: nb_tourists_dropping_luggage color: rgb(246,232,198);
+				data "Tourists going to the shuttles" value: nb_tourists_to_shuttles color: rgb(200,200,200);
+				data "Tourists in the station" value: nb_tourists color: rgb(150,150,150);
 			}
 		}
-		display map type:java2D 
+		display map type:opengl  background: rgb(40,40,40)
 		{
-			species hbf aspect:base transparency: 0.75;
+			//image site_plan transparency:0.75;
+			species metro_line aspect:default transparency:0.5;
+			species hbf aspect:base;
 			species metro aspect: base ;
 			species shuttle_spot aspect: base ;
-			species people;
+			species people transparency:0.7;
 			species dropoff_area aspect: base transparency: 0.85;
 			species tourist aspect: default;
-			//species tourist aspect: perception transparency:0.97;
-			species walking_area aspect:base transparency:0.93 ;
-			species sprinter_spot aspect: default;
+			//species walking_area aspect:base transparency:0.93 ;
+			//species sprinter_spot aspect: default;
 			species sprinter aspect: default;
 			species crew aspect: default;
+			species crew_spot aspect:base ;
+			//species car aspect:default transparency:0.4;
+			
 		
 ////////////////////User interaction starts here		
 			event mouse_move action: move;
