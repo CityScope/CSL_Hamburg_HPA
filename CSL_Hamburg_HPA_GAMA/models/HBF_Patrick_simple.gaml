@@ -25,7 +25,7 @@ global {
 	file road_traffic_origin <- file(cityGISFolder + "ambiance/Traffic-origin.shp");
 	file road_traffic_destination <- file(cityGISFolder + "ambiance/Traffic-destination.shp");
 	
-	//file site_plan <- image_file(cityGISFolder + "Site Plan.tif");
+	file site_plan <- image_file(cityGISFolder + "Site Plan.tif");
 	file tourist_icon <- image_file(cityGISFolder + "/images/Tourist.gif");
 	file person_icon <- image_file(cityGISFolder + "/images/Person.gif");
 	file ubahn_icon <- image_file(cityGISFolder + "/images/Ubahn.png");
@@ -178,7 +178,7 @@ global {
 
 	init{		
 		create hbf from: shapefile_hbf;
-		create metro from: shapefile_public_transportation;
+		create metro from: shapefile_public_transportation with: [station:string(read("station")), number:int(read("id"))];
 		create roads from: clean_network(shapefile_roads.contents, 1.0, true, true);
 		create crew_spot from: crew_spots;
 		create sprinter_spot from: sprinter_spots;
@@ -202,15 +202,15 @@ global {
 			spot.current_crew <- self;
 			location <- spot.location;
 		}
-		create metro_line from:metro_lines;
+		create metro_line from:metro_lines with: [colors::rgb(read("color"))];
 		network_metro <- as_edge_graph(metro_lines) with_optimizer_type "FloydWarshall";
 		create pedestrian_path from:pedestrian_paths;
 		network <- as_edge_graph(pedestrian_path) with_optimizer_type "FloydWarshall";	 
-		/*create traffic_road from:road_traffic;
+		create traffic_road from:road_traffic;
 		network_traffic <- as_edge_graph(traffic_road) with_optimizer_type "FloydWarshall";	
 		
 		create traffic_origin from:road_traffic_origin;
-		create traffic_destination from:road_traffic_destination;*/
+		create traffic_destination from:road_traffic_destination;
 	}
 }
 
@@ -223,7 +223,7 @@ species pedestrian_path {
 species obstacle {
 	geometry free_space;
 }
-/*
+
 species car skills: [moving]{
 	point final_target <- point(one_of(traffic_destination));
 	
@@ -232,11 +232,27 @@ species car skills: [moving]{
 	}
 
 	reflex move {
-		do goto target: final_target on: network_traffic;
+		do goto target: final_target on: network_traffic speed:50#km/#h;
 	}	
 	
 	aspect default {
-		draw square(1) color: #pink;
+		draw circle(2) color: #gray;
+	}
+}
+
+species metro_train skills: [moving]{
+	point final_target;
+	
+	reflex end when: (location distance_to final_target) <= 10{
+		do die;
+	}
+
+	reflex move {
+		do goto target: final_target on: network_metro speed:50#km/#h;
+	}	
+	
+	aspect default {
+		draw circle(2) color: #gray;
 	}
 }
 
@@ -247,11 +263,14 @@ species traffic_origin{
 	}
 }
 species traffic_destination{}
-species traffic_road{} */
+species traffic_road{} 
+
+
 species roads{}
 species metro_line{
+	rgb colors;
 	aspect default {
-		draw shape color: #gray;
+		draw shape color:colors width:3;
 	}
 }
 
@@ -284,7 +303,6 @@ species sprinter_spot control:fsm{
 }
 
 species hbf{
-	//rgb color <- #gray;	
 	aspect base {
 		//draw shape /*depth:15*/ color: color; //make depth correspond to height in shapefile
 		draw shape border: #white empty:true;
@@ -293,8 +311,16 @@ species hbf{
 
 species metro{
 	image_file icon <- ubahn_icon;
+	string station;
+	int number;
+	
+	reflex metro_trains when: every(120 #cycle) and self.number != nil{
+		create metro_train number:1 with: [location::location]{
+			final_target <- point(one_of(metro where(each.number = myself.number)));
+		}
+	}
 		
-	reflex create_opeople when: every(100 #cycle){
+	reflex create_opeople when: every(100 #cycle) and self.number = nil{
 		create people number: nb_people/10 with: [location::location]{
 				speed <- min_speed_ppl + (max_speed_ppl - min_speed_ppl) ;
 				final_target <- point(one_of(metro));
@@ -303,6 +329,7 @@ species metro{
 		
 	aspect base {
 		draw icon size:8 rotate:180;
+		draw station font:font("Helvetica Neue",5, #plain) color:#gray anchor:#center;
 	}
 }
 
@@ -332,7 +359,7 @@ species shuttle_spot{
 species entry_points{
 	int platform_nb;
 	
-	reflex train when: every(15#minute){
+	reflex train_comes when: every(15#minute){
 		if (coming_train = platform_nb) {
 	
 			create people number: nb_people with: [location::location]{
@@ -341,7 +368,6 @@ species entry_points{
 			}
 			create tourist number: nb_tourist with: [location::location]{
 				speed <- min_speed_ppl + (max_speed_ppl - min_speed_ppl) ;
-			
 			}	
 		}
 	}	
@@ -549,31 +575,31 @@ experiment "PCM_Simulation" type: gui {
 				
 			}
 			chart "Tourist in Central Station" type: series size:{1,0.5} position: {0,0.5} background: rgb(40,40,40 ) axes: #white color: #white legend_font:("Helvetica Neue") label_font:("Helvetica Neue") tick_font:("Helvetica Neue") title_font:("Helvetica Neue"){
-				data "Disoriented tourists" value: nb_tourists_disoriented color: rgb(245,213,236);
-				data "Tourists going to the luggage drop off area" value: nb_tourists_to_drop_off color: rgb(206,233,249);
-				data "Tourists dropping off their luggage" value: nb_tourists_dropping_luggage color: rgb(246,232,198);
-				data "Tourists going to the shuttles" value: nb_tourists_to_shuttles color: rgb(200,200,200);
-				data "Tourists in the station" value: nb_tourists color: rgb(150,150,150);
+				data "Disoriented tourists" value: nb_tourists_disoriented color: rgb(245,213,236) marker_size:0 thickness:2;
+				data "Tourists going to the luggage drop off area" value: nb_tourists_to_drop_off color: rgb(206,233,249) marker_size:0 thickness:2;
+				data "Tourists dropping off their luggage" value: nb_tourists_dropping_luggage color: rgb(246,232,198) marker_size:0 thickness:2;
+				data "Tourists going to the shuttles" value: nb_tourists_to_shuttles color: rgb(200,200,200) marker_size:0 thickness:2;
+				data "Tourists in the station" value: nb_tourists color: rgb(150,150,150) marker_size:0 thickness:2;
 			}
 		}
 		display map type:opengl  background: rgb(40,40,40)
 		{
-			//image site_plan transparency:0.75;
-			species metro_line aspect:default transparency:0.5;
+			image site_plan transparency:0.75;
+			species metro_line aspect:default transparency:0.85;
 			species hbf aspect:base;
 			species metro aspect: base ;
 			species shuttle_spot aspect: base ;
 			species people transparency:0.7;
 			species dropoff_area aspect: base transparency: 0.85;
-			species tourist aspect: default;
+			species tourist aspect: default trace:5 fading:true;
 			//species walking_area aspect:base transparency:0.93 ;
 			//species sprinter_spot aspect: default;
 			species sprinter aspect: default;
 			species crew aspect: default;
 			species crew_spot aspect:base ;
-			//species car aspect:default transparency:0.4;
+			species car aspect:default  trace:2 fading:true;
+			species metro_train aspect:default  trace:2 fading:true;
 			
-		
 ////////////////////User interaction starts here		
 			event mouse_move action: move;
 			event mouse_up action: click;
