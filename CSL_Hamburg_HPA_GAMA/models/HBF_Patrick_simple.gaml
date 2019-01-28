@@ -20,6 +20,7 @@ global {
 	string cityGISFolder <- "/external/hbf-model/";
 	string Intervention <- "/external/hbf-model/Intervention/";
 	string Scenario <- "/external/hbf-model/" among:["/external/hbf-model/","/external/hbf-model/Intervention/"] parameter:"Scenario" category:"Infrastructure and service";
+	string show_plan <- "/external/hbf-model/Intervention/" among:["/external/hbf-model/","/external/hbf-model/Intervention/"] parameter:"Show Intervention Plan" category:"Infrastructure and service";
 	
 	file shapefile_hbf <- file(cityGISFolder + "Hbf-Detail.shp");
 	file shapefile_walking_paths <- file(cityGISFolder + "Detail_Walking Areas.shp");
@@ -32,14 +33,17 @@ global {
 	file crew_spots <- file(Scenario + "crew_spots.shp");
 	file sprinter_spots <- file(Scenario + "sprinter_spots.shp");
 	file shapefile_shuttle <- file(Scenario + "Detail_Bus Shuttle.shp");
-		file intervention_plan <- image_file(Scenario + "Intervention_modified.tif");
+	file intervention_plan <- image_file(show_plan + "Intervention_modified.tif");
 
 	file metro_lines <- file(cityGISFolder + "ambiance/Metro Lines.shp");
-	/*file road_traffic <- file(cityGISFolder + "ambiance/Traffic.shp");
+	file metro_origin <- file(cityGISFolder + "ambiance/Metro-origin.shp");
+	file road_traffic <- file(cityGISFolder + "ambiance/Traffic.shp");
 	file road_traffic_origin <- file(cityGISFolder + "ambiance/Traffic-origin.shp");
-	file road_traffic_destination <- file(cityGISFolder + "ambiance/Traffic-destination.shp");*/
+	file road_traffic_destination <- file(cityGISFolder + "ambiance/Traffic-destination.shp");
+	file shapefile_buildingds <- file(cityGISFolder + "ambiance/buildings.shp");
 	
 	file site_plan <- image_file(cityGISFolder + "Site Plan.tif");
+	file shapefile_cruise_terminals <- file(cityGISFolder + "larger_scale/Cruise_Terminals.shp");
 	
 	file tourist_icon <- image_file(cityGISFolder + "/images/Tourist.gif");
 	file person_icon <- image_file(cityGISFolder + "/images/Person.gif");
@@ -68,6 +72,7 @@ global {
 	float perception_distance; //Gehl social field of vision
 	
 	float train_freq;
+	float shuttle_freq;
 	int current_hour <- 7; //starting hour of the simulation
 	int current_day;
 	int nb_tourist;
@@ -75,6 +80,8 @@ global {
 	int nb_people;
 	float terminal_arrival_choice;
 	float hamburg_arrival_choice;
+	string time_info;
+	int active_terminal;
 
 	int nb_tourists update: length(tourist);
 	int nb_tourists_dropping_luggage update: tourist count each.dropping_now;
@@ -106,13 +113,30 @@ global {
 		if current_hour > 23{
 			current_hour <- 0;
 		}
-		write "Day: " + string (current_day) + " Hour: " + string(current_hour) + ":00" ;
+		time_info <- "Day: " + string (current_day) + " Hour: " + string(current_hour) + ":00" ;
 		if current_hour mod 24 = 0{
 			current_day <- current_day+1;
+			active_terminal <- rnd(2)+1;
+			write active_terminal;
 		}
 	}
 	
 	reflex time_peaks { 				//adjusted to IG activeness curve
+		/*
+		map<int,float> peaks_people <- create_map([7,8,9,10,11,12,13,14,15,16,17,18],[0.02,0.05,0.1,0.06,0.05,0.05,0.05,0.08,0.06,0.08,0.1,0.07]);
+		if current_hour = peaks_people.keys{
+			nb_people <- int(float(peaks_people.values)*people_in_station);
+			}else{
+			nb_people <- int(people_in_station * 0.01);	
+			}
+			
+		map<int,float> peaks_tourists <- create_map([8,9,10,11,12,13,14,15,16,17],[0.03,0.05,0.08,0.12,0.1,0.08,0.07,0.05,0.04,0.02]);
+		if current_hour = peaks_tourists.keys{
+			nb_tourist <- int(float(peaks_tourists.values)*init_nb_tourist);
+			}else{
+			nb_tourist <- 0;	
+			}*/
+		
 		if current_hour < 7{
 			nb_people <- int(people_in_station * 0.01);
 			nb_tourist <- 0;
@@ -123,11 +147,11 @@ global {
 		}
 		if current_hour = 8{
 			nb_people <- int(people_in_station * 0.05);
-			nb_tourist <- int(init_nb_tourist *0.08);	
+			nb_tourist <- int(init_nb_tourist *0.03);	
 		}
 		if current_hour = 9{
 			nb_people <- int(people_in_station * 0.1);
-			nb_tourist <- int(init_nb_tourist *0.1);	
+			nb_tourist <- int(init_nb_tourist *0.05);	
 		}
 		if current_hour = 10{
 			nb_people <- int(people_in_station * 0.1);
@@ -135,31 +159,31 @@ global {
 		}
 		if current_hour = 11{
 			nb_people <- int(people_in_station * 0.06);
-			nb_tourist <- int(init_nb_tourist *0.1);	
+			nb_tourist <- int(init_nb_tourist *0.12);	
 		}
 		if current_hour = 12{
 			nb_people <- int(people_in_station * 0.05);
-			nb_tourist <- int(init_nb_tourist *0.12);	
+			nb_tourist <- int(init_nb_tourist *0.1);	
 		}
 		if current_hour = 13{
 			nb_people <- int(people_in_station * 0.05);
-			nb_tourist <- int(init_nb_tourist *0.1);	
+			nb_tourist <- int(init_nb_tourist *0.08);	
 		}
 		if current_hour = 14{
 			nb_people <- int(people_in_station * 0.08);
-			nb_tourist <- int(init_nb_tourist *0.1);	
+			nb_tourist <- int(init_nb_tourist *0.07);	
 		}
 		if current_hour = 15{
 			nb_people <- int(people_in_station * 0.06);
-			nb_tourist <- int(init_nb_tourist *0.08);	
+			nb_tourist <- int(init_nb_tourist *0.05);	
 		}
 		if current_hour = 16{
 			nb_people <- int(people_in_station * 0.08);
-			nb_tourist <- int(init_nb_tourist *0.06);	
+			nb_tourist <- int(init_nb_tourist *0.04);	
 		}
 		if current_hour = 17{
 			nb_people <- int(people_in_station * 0.1);
-			nb_tourist <- int(init_nb_tourist *0.04);	
+			nb_tourist <- int(init_nb_tourist *0.02);	
 		}
 		if current_hour > 18 and current_hour < 23{
 			nb_people <- int(people_in_station * 0.07);
@@ -169,7 +193,6 @@ global {
 			nb_people <- int(people_in_station * 0.05);
 			nb_tourist <- 0;	
 		}
-		
 	}
 	
 /////////User interaction starts here
@@ -218,7 +241,9 @@ global {
 	}
 ////////////User interaction ends here
 
-	init{		
+	init{	
+		create buildings from:shapefile_buildingds with:[height:int(read("Height"))];	
+		create cruise_terminal from: shapefile_cruise_terminals with:[id:int(read("id"))];
 		create hbf from: shapefile_hbf;
 		create metro from: shapefile_public_transportation with: [station:string(read("station")), number:int(read("id"))];
 		create roads from: clean_network(shapefile_roads.contents, 1.0, true, true);
@@ -228,7 +253,6 @@ global {
 		create shuttle_spot from: shapefile_shuttle;
 		create entry_points from: shapefile_entry_points with: [platform_nb::int(read("platform"))]; //number of platform taken from shapefile
 		create walking_area from: shapefile_walking_paths {
-			//Creation of the free space by removing the shape of the buildings (train station complex)
 			free_space <- geometry(walking_area);
 		}
 		
@@ -247,11 +271,12 @@ global {
 		network_metro <- as_edge_graph(metro_lines) with_optimizer_type "FloydWarshall";
 		create pedestrian_path from:pedestrian_paths;
 		network <- as_edge_graph(pedestrian_path) with_optimizer_type "FloydWarshall";	 
-		/*create traffic_road from:road_traffic;
+		create traffic_road from:road_traffic;
 		network_traffic <- as_edge_graph(traffic_road) with_optimizer_type "FloydWarshall";	
 		
 		create traffic_origin from:road_traffic_origin;
-		create traffic_destination from:road_traffic_destination;*/
+		create traffic_destination from:road_traffic_destination;
+		create metro_origins from:metro_origin;
 	}
 }
 
@@ -261,57 +286,90 @@ species pedestrian_path {
 	}
 }
 
+species buildings{
+	int height;
+	aspect default {
+		draw shape color: rgb(120,125,130) depth:(height*4);
+	}
+}
+
 species obstacle {
 	geometry free_space;
 }
-/* 
+
 species car skills: [moving]{
 	point final_target <- point(one_of(traffic_destination));
+	point origin <- location;
+	int x;
+	int y;
 	
 	reflex end when: (location distance_to final_target) <= 10{
 		do die;
 	}
 
 	reflex move {
-		do goto target: final_target on: network_traffic speed:50#km/#h;
+		do goto target: final_target on: network_traffic speed:15#km/#h;
 	}	
+	reflex show when: location distance_to origin > 5{
+	x<-8;
+	y<-4;
+	}
+	
+	reflex kill when: every(10 #cycle){
+		if location = origin{
+			do die;
+		}
+	}
 	
 	aspect default {
-		draw circle(2) color: #gray;
+		draw rectangle(x,y) color: #grey rotate:heading;
 	}
 }
 
 species metro_train skills: [moving]{
-	point final_target;
+	point final_target <- point(one_of(metro_origins));
+	point origin <- location;
 	
 	reflex end when: (location distance_to final_target) <= 10{
 		do die;
 	}
 
 	reflex move {
-		do goto target: final_target on: network_metro speed:50#km/#h;
+		do goto target: final_target on: network_metro speed:15#km/#h;
 	}	
 	
+	reflex kill when: every(10 #cycle){
+		if location = origin{
+			do die;
+		}
+	}
+	
 	aspect default {
-		draw circle(2) color: #gray;
+		draw rectangle(80,10) color: #gray rotate:heading;
 	}
 }
 
 species traffic_origin{
-	reflex create_cars when: every(50#cycle){
-		create car number: 1 with: [location::location]{		
-		}
+	reflex create_cars when: every(20#cycle){
+		create car number: rnd(1) with: [location::location];
 	}
 }
+
+species metro_origins{
+	reflex metro_trains when: every(100#cycle){
+		create metro_train number: 1 with: [location::location];
+	}
+}
+
 species traffic_destination{}
 species traffic_road{} 
-*/
+
 
 species roads{}
 species metro_line{
 	rgb colors;
 	aspect default {
-		draw shape color:colors width:3;
+		draw shape color:rgb(54,64,92) width:0.5;
 	}
 }
 
@@ -342,10 +400,24 @@ species sprinter_spot control:fsm{
 	}
 }
 
+species cruise_terminal control:fsm{
+	int id;
+	state inactive initial:true {
+		transition to: active when: active_terminal = id;
+	}
+	state active{
+		transition to: inactive when: active_terminal !=id;
+	}
+	aspect base {
+		//draw shape /*depth:15*/ color: color; //make depth correspond to height in shapefile
+		draw string(id) font:font("Calibri",5, #plain) color:#gray anchor:#center;
+	}
+}
+
 species hbf{
 	aspect base {
 		//draw shape /*depth:15*/ color: color; //make depth correspond to height in shapefile
-		draw shape border: #white empty:true;
+		draw shape border:rgb(75,77,79) width:0.5 empty:true;
 	}
 }
 
@@ -353,13 +425,7 @@ species metro{
 	image_file icon <- ubahn_icon;
 	string station;
 	int number;
-	/*
-	reflex metro_trains when: every(120 #cycle) and self.number != nil{
-		create metro_train number:1 with: [location::location]{
-			final_target <- point(one_of(metro where(each.number = myself.number)));
-		}
-	}*/
-		
+			
 	reflex create_opeople when: every(5+rnd(5) #mn){
 		create people number: nb_people*0.1 with: [location::location]{
 				speed <- min_speed_ppl + (max_speed_ppl - min_speed_ppl) ;
@@ -373,15 +439,13 @@ species metro{
 		
 	aspect base {
 		draw icon size:8 rotate:180;
-		draw station font:font("Helvetica Neue",5, #plain) color:#gray anchor:#center;
+		draw station font:font("Calibri",5, #plain) color:#gray anchor:#center;
 	}
 }
 
 species shuttle_spot control:fsm {
 	crew current_crew;
 	rgb color <- #blue;	
-	image_file icon <- shuttle_icon;
-	list<tourist_shuttle> waiting_tourists;
 
 	state unavailable {
 		transition to: available when: location distance_to one_of(shuttle) >= 1;
@@ -399,15 +463,8 @@ species shuttle_spot control:fsm {
 	}
 ////////////User interaction ends here
 	aspect base {
-		draw circle(8) color:rgb(200,200,100);
-		int i<-0;
-		loop t over:waiting_tourists{
-			//draw circle (1) at:{t.location.x+rnd(-3.0,3.0),t.location.y+rnd(-3.0,3.0)} color:#red ;	
-			draw circle (1) at:{t.location.x+i,t.location.y+i*3} color:rgb(246,232,198) ;
-			i<-i+1;	
-	
+		draw circle(8) color:rgb(179,186,196);
 		}
-	}
 }
 
 species shuttle skills:[moving] control:fsm {
@@ -416,30 +473,39 @@ species shuttle skills:[moving] control:fsm {
 	int luggage_capacity <- 100;
 	int tourist_capacity <- 50;
 	float speed <- 10 #km/#h;
-	point target_loc;
+	point target_loc <- point(one_of(crew_spot));
+	bool is_scheduled;
+	shuttle_spot own_spot;
 	
 	action depart {
 		do goto target: target_loc on:the_graph speed:speed;
 	}
 	
+	reflex scheduled_depart when: every(1/shuttle_freq#h) {
+		is_scheduled <- true;
+	}
+	
 	state empty {
 		enter {
+			is_scheduled <- false;
 			luggage_capacity <- 100;
 			tourist_capacity <- 50;
-			target_loc <- point(one_of(shuttle_spot where (each.state = 'available')));
+			target_loc <- point(own_spot);
 		}
 		do depart;
 		transition to: loading when: (location distance_to target_loc) <1;
-		
 	}
 	
 	state loading initial:true {
-		transition to: full when: luggage_capacity < 1 or tourist_capacity < 1;
+		enter{
+			own_spot <- shuttle_spot closest_to self;
+		}
+		transition to: full when: tourist_capacity < 1 or luggage_capacity < 1 or is_scheduled;
 	}
 	
 	state full {
 		enter {
-			target_loc <- one_of(sprinter_spot).location;
+			target_loc <- point(one_of(sprinter_spot));
 		}
 		do depart;
 		transition to: empty when: (location distance_to target_loc <5);
@@ -497,7 +563,7 @@ species people skills: [moving] {
 	}	
 	
 	aspect default {
-		draw circle(1) color: rgb(100,100,100);
+		draw circle(1) color: rgb(179,186,196);
 	}
 }
 
@@ -527,14 +593,14 @@ species sprinter skills:[moving] control:fsm {
 	
 	state full {
 		enter {
-			target_loc <- one_of(shuttle_spot).location;
+			target_loc <- point(one_of(shuttle_spot));
 		}
 		do depart;
 		transition to: empty when: (location distance_to target_loc <5);
 	}
 	
 	aspect default {
-		draw circle(6) color: #pink;
+		draw circle(6) color: rgb(72,123,143);
 		draw icon size:7 rotate: my heading ;
 	}
 }
@@ -672,6 +738,9 @@ species tourist skills:[moving] control:fsm {
 	aspect default {
 		draw circle(1.5) color: #white;
 	}
+	aspect glow{
+		draw circle(8) color: rgb(179,186,196);
+	}
 }
 
 species tourist_shuttle skills:[moving] control:fsm {
@@ -721,99 +790,107 @@ species tourist_shuttle skills:[moving] control:fsm {
 	aspect default {
 		draw circle(1.5) color: #white;
 	}
+	aspect glow{
+		draw circle(8) color: rgb(179,186,196);
+	}
 }
 
 experiment "PCM_Simulation" type: gui {
 	float minimum_cycle_duration <- 0.02;
-	font regular <- font("Helvetica Neue", 12, # bold);
+	font regular <- font("Calibri", 12, # bold);
 	parameter "Number of passengers" var: cruise_size init:2000 min:1 max:4500 category:"Amount of people";
 	parameter "People in the station" var: people_in_station init:1000 min:1 max: 2000 category: "Amount of people";
-	parameter "Frequency of trains (Fractions of hour)" var: train_freq init:4.0 min:0.1 max:4.0 category: "Amount of people";
+	parameter "Frequency of trains (Fractions of an hour)" var: train_freq init:4.0 min:0.1 max:12.0 category: "Amount of people";
+	parameter "Frequency of bus shuttles (Fractions of an hour)" var:shuttle_freq init:2.0 min:0.1 max:12.0 category: "Infrastructure and service";
 	parameter "Size of welcome center" var: nb_sprinters init:3 min:1 max: 5 category: "Infrastructure and service";
 	parameter "Perception of info" var: perception_distance init:250.0 min:1.0 max:10000.0 category: "Infrastructure and service";
 	parameter "% of tourists using welcome center" init:80.0 var:terminal_arrival_choice min:1.0 max:100.0 category:"Behavioral profile";
 	parameter "% of tourists arriving in HH by train" init:20.0 var:hamburg_arrival_choice min:1.0 max:100.0 category: "Behavioral profile";
 
 	output {
-		display charts refresh:every(5#mn){
-			chart "Tourist in Central Station" type: pie size:{1,0.5} position: {0,0}background: rgb(40,40,40) axes: #white color: #white legend_font:("Helvetica Neue") label_font:("Helvetica Neue") tick_font:("Helvetica Neue") title_font:("Helvetica Neue"){
-				data "Disoriented tourists" value: nb_tourists_disoriented color: rgb(245,213,236);
-				data "Tourists going to the luggage drop off area" value: nb_tourists_to_drop_off color: rgb(206,233,249);
-				data "Tourists dropping off their luggage" value: nb_tourists_dropping_luggage color: rgb(246,232,198);
+		display charts  background: rgb(55,62,70) refresh:every(5#mn){
+			chart "Tourist in Central Station" type: pie size:{1,0.3} position: {0,0}background: rgb(55,62,70) axes: #white color: rgb(122,193,198) legend_font:("Calibri") label_font:("Calibri") tick_font:("Calibri") title_font:("Calibri"){
+				data "Disoriented tourists" value: nb_tourists_disoriented color: rgb(122,193,198);
+				data "Tourists going to the luggage drop off area" value: nb_tourists_to_drop_off color: rgb(120,125,130);
+				data "Tourists dropping off their luggage" value: nb_tourists_dropping_luggage color: rgb(179,186,196);
 				data "Tourists going to the shuttles" value: nb_tourists_to_shuttles color: rgb(200,200,200);
 			}
-			chart " " type: series size:{0.5,0.5} position: {0,0.5} background: rgb(40,40,40 ) axes: #white color: #white legend_font:("Helvetica Neue") label_font:("Helvetica Neue") tick_font:("Helvetica Neue") title_font:("Helvetica Neue"){
-				data "Disoriented tourists" value: nb_tourists_disoriented color: rgb(245,213,236) marker_size:0 thickness:2;
-				data "Tourists going to the luggage drop off area" value: nb_tourists_to_drop_off color: rgb(206,233,249) marker_size:0 thickness:2;
-				data "Tourists in the area" value: nb_tourists color: rgb(150,150,150) marker_size:0 thickness:2;
+			chart " " type: series size:{1,0.3} position: {0,0.3} background: rgb(55,62,70) axes: #white color: #white legend_font:("Calibri") label_font:("Calibri") tick_font:("Calibri") title_font:("Calibri"){
+				data "Disoriented tourists" value: nb_tourists_disoriented color: rgb(179,186,196) marker_size:0 thickness:2;
+				data "Tourists going to the luggage drop off area" value: nb_tourists_to_drop_off color: rgb(120,125,130) marker_size:0 thickness:2;
+				data "Tourists in the area" value: nb_tourists color: rgb(122,193,198) marker_size:0 thickness:2;
 			}
-			chart " " type: series size:{0.5,0.5} position: {0.5,0.5} background: rgb(40,40,40 ) axes: #white color: #white legend_font:("Helvetica Neue") label_font:("Helvetica Neue") tick_font:("Helvetica Neue") title_font:("Helvetica Neue"){
-				data "Tourists dropping off their luggage" value: nb_tourists_dropping_luggage color: rgb(246,232,198) marker_size:0 thickness:2;
-				data "Tourists going to the shuttles" value: nb_tourists_to_shuttles color: rgb(200,200,200) marker_size:0 thickness:2;
+			chart " " type: series size:{1,0.3} position: {0,0.6} background: rgb(55,62,70) axes: #white color: #white legend_font:("Calibri") label_font:("Calibri") tick_font:("Calibri") title_font:("Calibri"){
+				data "Tourists dropping off their luggage" value: nb_tourists_dropping_luggage color: rgb(179,186,196) marker_size:0 thickness:2;
+				data "Tourists going to the shuttles" value: nb_tourists_to_shuttles color: rgb(122,193,198) marker_size:0 thickness:2;
 			}
 		}
-		display map type:opengl  background: rgb(40,40,40)
+		display map type:opengl  background: rgb(30,40,49)
 		{
 			image site_plan transparency:0.75;
 			image intervention_plan position:{500,300};	
 			
-			species metro_line aspect:default transparency:0.85 refresh:false;
+			//species buildings aspect:default transparency:0.9;
+			species metro_line aspect:default refresh:false;
 			species hbf aspect:base refresh:false;
 			species metro aspect: base refresh:false;
 			species shuttle_spot aspect: base ;
-			species people transparency:0.5;
-			species tourist aspect: default trace:5 fading:true;
-			//species walking_area aspect:base transparency:0.93 ;
-			//species sprinter_spot aspect: default;
+			species people;
+			species tourist aspect: default;
+			species tourist_shuttle aspect: default;
+			species tourist aspect: glow transparency:0.85;
+			species tourist_shuttle aspect: glow transparency:0.85;
 			species sprinter aspect: default;
 			species crew aspect: default;
 			species crew_spot aspect:base ;
-			species tourist_shuttle aspect: default trace:5 fading:true;
 			species shuttle aspect: base;
-			//species car aspect:default  trace:2 fading:true;
-			//species metro_train aspect:default  trace:2 fading:true;
+			species cruise_terminal aspect:base;
+			species car aspect:default;
+			 species metro_train aspect:default transparency:0.75;
 			
-			overlay position: { 5, 5 } size: { 240 #px, 680 #px } background: # black transparency: 1.0 border: #black  {
-                rgb text_color<-#white;
+			overlay position: { 5, 5 } size: { 240 #px, 680 #px } background:rgb(55,62,70) transparency: 1.0 border: #black  {
+                rgb text_color<-rgb(179,186,196);
                 float y <- 12#px;
-  				draw "Agents in the simulation" at: { 10#px, y } color: text_color font: font("Helvetica Neue", 12, #bold) perspective:true;
+  				draw "Agents in the simulation" at: { 10#px, y } color: rgb(122,193,198) font: font("Calibri", 14, #plain) perspective:true;
                 y <- y + 10 #px;
-                draw circle(3#px) at: { 10#px, y +4#px } color: rgb(100,100,100);
-                draw circle(3#px) at: { 13#px, y +4#px } color: rgb(160,160,160);
-                draw circle(3#px) at: { 16#px, y +4#px } color: #white;
-                draw "Cruise Tourist" at: { 25#px, y + 8#px } color: text_color font: font("Helvetica Neue", 10, #plain) perspective:true;
+                draw circle(8#px) at: { 13#px, y +4#px } color: rgb(120,125,130);
+                draw circle(2#px) at: { 13#px, y +4#px } color: #white;
+                draw "CRUISE TOURIST" at: { 25#px, y + 8#px } color: text_color font: font("Calibri", 9, #bold) perspective:true;
 				y <- y + 14 #px;
-                draw circle(2#px) at: { 13#px, y +4#px } color: rgb(100,100,100);
-                draw "People" at: { 25#px, y + 8#px } color: text_color font: font("Helvetica Neue", 10, #plain) perspective:true;
+                draw circle(2#px) at: { 13#px, y +4#px } color: rgb(179,186,196);
+                draw "PEOPLE" at: { 25#px, y + 8#px } color: text_color font: font("Calibri", 9, #bold) perspective:true;
                 y <- y + 14#px;
-                draw circle(3#px) at: { 13#px, y +4#px } color: #pink;
-                draw "Luggage Sprinter" at: { 25#px, y + 8#px } color: text_color font: font("Helvetica Neue", 10, #plain) perspective:true;
+                draw circle(3#px) at: { 13#px, y +4#px } color: rgb(72,123,143);
+                draw "LUGGAGE SPRINTER" at: { 25#px, y + 8#px } color: text_color font: font("Calibri", 9, #bold) perspective:true;
                 y <- y + 14#px;
-                draw circle(6) at: { 13#px, y +4#px } color:rgb(200,200,100);
-                draw "Bus Shuttle [interaction]" at: { 25#px, y + 8#px } color: text_color font: font("Helvetica Neue", 10, #plain) perspective:true;
+                draw circle(6) at: { 13#px, y +4#px } color:rgb(179,186,196);
+                draw "BUS SHUTTLE [INTERACTION]" at: { 25#px, y + 8#px } color: text_color font: font("Calibri", 9, #bold) perspective:true;
                 y <- y + 14 #px;
-                draw "_____________________________"at: { 25#px, y + 8#px } color: text_color font: font("Helvetica Neue", 10, #bold) perspective:true;
+                draw "_____________________________"at: { 25#px, y + 8#px } color:rgb(120,125,130) font: font("Calibri", 15, #bold) perspective:true;
                 y <- y + 21 #px;
-				draw "Waiting time at welcome center" at: { 25#px, y + 8#px } color: text_color font: font("Helvetica Neue", 10, #plain) perspective:true;
+				draw "Waiting time at welcome center" at: { 25#px, y + 8#px } color:rgb(120,125,130) font: font("Calibri", 12, #plain) perspective:true;
                 y <- y + 14 #px;
-                draw rectangle(avg_waiting_time/15, 8#px) at: { 0#px, y +4#px } color:#pink;
+                draw rectangle(avg_waiting_time/15, 8#px) at: { 0#px, y +4#px } color:rgb(179,186,196);
                 y <- y + 14 #px;
-                draw "Drop-off line length" at: { 25#px, y + 8#px } color: text_color font: font("Helvetica Neue", 10, #plain) perspective:true;
+                draw "Drop-off line length" at: { 25#px, y + 8#px } color:rgb(120,125,130) font: font("Calibri", 12, #plain) perspective:true;
                 y <- y + 14 #px;
-                draw rectangle(nb_tourists_dropping_luggage*10, 8#px) at: { 0#px, y +4#px } color:#white;
+                draw rectangle(nb_tourists_dropping_luggage*10, 8#px) at: { 0#px, y +4#px } color:rgb(122,193,198);
                 y <- y + 14 #px;
-                draw "Expected people arriving to welcome center" at: { 25#px, y + 8#px } color: text_color font: font("Helvetica Neue", 10, #plain) perspective:true;
+                draw "Expected people arriving to welcome center" at: { 25#px, y + 8#px } color:rgb(120,125,130) font: font("Calibri", 12, #plain) perspective:true;
                 y <- y + 14 #px;
-                draw rectangle(nb_tourists_to_drop_off*10, 8#px) at: { 0#px, y +4#px } color:rgb(206,233,249);
+                draw rectangle(nb_tourists_to_drop_off*10, 8#px) at: { 0#px, y +4#px } color:rgb(120,125,130);
                 y <- y + 14 #px;
-                draw "Disoriented" at: { 25#px, y + 8#px } color: text_color font: font("Helvetica Neue", 10, #plain) perspective:true;
+                draw "Disoriented" at: { 25#px, y + 8#px } color:rgb(120,125,130) font: font("Calibri", 12, #plain) perspective:true;
                 y <- y + 14 #px;
-                draw rectangle(nb_tourists_disoriented*10, 8#px) at: { 0#px, y +4#px } color:rgb(246,232,198);
+                draw rectangle(nb_tourists_disoriented*10, 8#px) at: { 0#px, y +4#px } color:rgb(62,120,119);
                 y <- y + 14 #px;
-                draw "On the way to bus shuttle" at: { 25#px, y + 8#px } color: text_color font: font("Helvetica Neue", 10, #plain) perspective:true;
+                draw "On the way to bus shuttle" at: { 25#px, y + 8#px } color:rgb(120,125,130) font: font("Calibri", 12, #plain) perspective:true;
                 y <- y + 14 #px;
-                draw rectangle(nb_tourists_to_shuttles*10, 8#px) at: { 0#px, y +4#px } color:#gray;
-                y <- y + 14 #px;         
+                draw rectangle(nb_tourists_to_shuttles*10, 8#px) at: { 0#px, y +4#px } color:rgb(46,83,97);
+                y <- y + 14 #px;
+                draw "_____________________________"at: { 25#px, y + 8#px } color:rgb(120,125,130) font: font("Calibri", 15, #bold) perspective:true;
+                y <- y + 21 #px; 
+                draw time_info at: { 25#px, y + 8#px } color:rgb(120,125,130) font: font("Calibri", 12, #plain) perspective:true;
             }
 			
 ////////////////////User interaction starts here		
@@ -824,12 +901,12 @@ experiment "PCM_Simulation" type: gui {
 			graphics "Full target" {
 				int size <- length(moved_agents);
 				if (size > 0){
-					rgb c1 <- rgb(#darkseagreen, 120);
-					rgb c2 <- rgb(#firebrick, 120);
+					rgb c1 <- rgb(62,120,119);
+					rgb c2 <- rgb(62,120,119);
 					draw zone at: target empty: false border: false color: (can_drop ? c1 : c2);
-					draw string(size) at: target + { -30, -30 } font: regular color: # white;
-					draw "'r': remove" at: target + { -30, 0 } font: regular color: # white;
-					draw "'c': copy" at: target + { -30, 30 } font: regular color: # white;
+					draw string(size) at: target + { -15, -15 } font: font("Calibri", 8, #plain) color: rgb(179,186,196);
+					draw "'r': remove" at: target + { -15, 0 } font: font("Calibri", 8, #plain) color: rgb(179,186,196);
+					draw "'c': copy" at: target + { -15, 15 } font: font("Calibri", 8, #plain) color: rgb(179,186,196);
 				}
 			}
 ////////////////////User interaction ends here	
