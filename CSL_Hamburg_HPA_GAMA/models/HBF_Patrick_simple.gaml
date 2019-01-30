@@ -30,20 +30,23 @@ global {
 	file pedestrian_paths <- file(cityGISFolder + "pedestrian_path_complex.shp");
 	file boundary <- file(cityGISFolder + "Bounds.shp");
 	
+	file shapefile_taxi_stand <- file(Scenario + "taxi_stand.shp");
 	file crew_spots <- file(Scenario + "crew_spots.shp");
 	file sprinter_spots <- file(Scenario + "sprinter_spots.shp");
 	file shapefile_shuttle <- file(Scenario + "Detail_Bus Shuttle.shp");
 	file intervention_plan <- image_file(show_plan + "Intervention_modified.tif");
-
+	
 	file metro_lines <- file(cityGISFolder + "ambiance/Metro Lines.shp");
 	file metro_origin <- file(cityGISFolder + "ambiance/Metro-origin.shp");
-	file road_traffic <- file(cityGISFolder + "ambiance/Traffic.shp");
+	file<geometry> road_traffic <- shape_file(cityGISFolder + "ambiance/Traffic.shp");
 	file road_traffic_origin <- file(cityGISFolder + "ambiance/Traffic-origin.shp");
 	file road_traffic_destination <- file(cityGISFolder + "ambiance/Traffic-destination.shp");
 	file shapefile_buildingds <- file(cityGISFolder + "ambiance/buildings.shp");
 	
 	file site_plan <- image_file(cityGISFolder + "Site Plan.tif");
-	file shapefile_cruise_terminals <- file(cityGISFolder + "larger_scale/Cruise_Terminals.shp");
+	file shapefile_cruise_terminals <- file(Scenario + "larger_scale/Cruise_Terminals.shp");
+	file shapefile_reference_hbf<- file(cityGISFolder + "larger_scale/reference_HBF.shp");
+	file<geometry> path_to_terminals <- shape_file(cityGISFolder + "larger_scale/Connection to terminals.shp");
 	
 	file tourist_icon <- image_file(cityGISFolder + "/images/Tourist.gif");
 	file person_icon <- image_file(cityGISFolder + "/images/Person.gif");
@@ -56,10 +59,10 @@ global {
 	graph network;
 	graph network_traffic;
 	graph network_metro;
+	graph terminal_flows;
 	
 	float step <- 2#s;
 	
-	int nb_taxis <- 20;
 	int nb_sprinters <- 3;
 	int people_in_station;
 	int cruise_size; // this should be taken from the CSV with vessel schedules
@@ -67,7 +70,6 @@ global {
 	float min_speed_ppl <- 0.5 #km / #h;
 	float max_speed_ppl <- 2 #km / #h;
 	geometry free_space;
-	float people_size <- 1.0;
 	int coming_train;
 	float perception_distance; //Gehl social field of vision
 	
@@ -81,7 +83,8 @@ global {
 	float terminal_arrival_choice;
 	float hamburg_arrival_choice;
 	string time_info;
-	int active_terminal;
+	int people_in_terminal;
+	int people_left_terminal;
 
 	int nb_tourists update: length(tourist);
 	int nb_tourists_dropping_luggage update: tourist count each.dropping_now;
@@ -116,8 +119,6 @@ global {
 		time_info <- "Day: " + string (current_day) + " Hour: " + string(current_hour) + ":00" ;
 		if current_hour mod 24 = 0{
 			current_day <- current_day+1;
-			active_terminal <- rnd(2)+1;
-			write active_terminal;
 		}
 	}
 	
@@ -147,11 +148,11 @@ global {
 		}
 		if current_hour = 8{
 			nb_people <- int(people_in_station * 0.05);
-			nb_tourist <- int(init_nb_tourist *0.03);	
+			nb_tourist <- int(init_nb_tourist *0.01);	
 		}
 		if current_hour = 9{
 			nb_people <- int(people_in_station * 0.1);
-			nb_tourist <- int(init_nb_tourist *0.05);	
+			nb_tourist <- int(init_nb_tourist *0.01);	
 		}
 		if current_hour = 10{
 			nb_people <- int(people_in_station * 0.1);
@@ -273,10 +274,200 @@ global {
 		network <- as_edge_graph(pedestrian_path) with_optimizer_type "FloydWarshall";	 
 		create traffic_road from:road_traffic;
 		network_traffic <- as_edge_graph(traffic_road) with_optimizer_type "FloydWarshall";	
+		create terminal_flow from:path_to_terminals;
+		terminal_flows <- as_edge_graph(terminal_flow) with_optimizer_type "FloydWarshall";	
 		
 		create traffic_origin from:road_traffic_origin;
 		create traffic_destination from:road_traffic_destination;
 		create metro_origins from:metro_origin;
+		create taxi from:shapefile_taxi_stand;
+		create taxi_spot from:shapefile_taxi_stand;
+		create point_HBF from:shapefile_reference_hbf;
+
+	}
+}
+
+species ref_shuttle  skills: [moving]{
+	point final_target;
+	cruise_terminal current_terminal;
+	int offset <- rnd(50);
+	reflex go{
+		list<cruise_terminal> active_terminal <- cruise_terminal where (each.state = 'active');
+		final_target <- point(one_of(active_terminal));
+		do goto target: final_target on: terminal_flows speed:50#km/#h;
+	}
+	reflex end when: (location distance_to final_target) <= 10{
+		do die;
+	}
+		aspect default {
+		draw circle(10) at:{location.x+offset,location.y+offset} color:rgb(122,193,198);
+		draw circle(50) empty:true width:0.5 at:{location.x+offset,location.y+offset} color:rgb(122,193,198);
+	}
+}
+species ref_taxi skills: [moving]{
+	point final_target;
+	cruise_terminal current_terminal;
+	int offset <- rnd(50);
+	reflex go{
+		list<cruise_terminal> active_terminal <- cruise_terminal where (each.state = 'active');
+		final_target <- point(one_of(active_terminal));
+		do goto target: final_target on: terminal_flows speed:50#km/#h;
+	}
+	reflex end when: (location distance_to final_target) <= 10{
+		do die;
+	}
+		aspect default {
+		draw circle(15) at:{location.x+offset,location.y+offset} color:rgb(62,120,119);
+	}
+}
+species ref_sprinter skills: [moving]{
+	point final_target;
+	cruise_terminal current_terminal;
+	int offset <- rnd(50);
+	reflex go{
+		list<cruise_terminal> active_terminal <- cruise_terminal where (each.state = 'active');
+		final_target <- point(one_of(active_terminal));
+		do goto target: final_target on: terminal_flows speed:50#km/#h;
+	}
+	reflex end when: (location distance_to final_target) <= 10{
+		do die;
+	}
+		aspect default {
+		draw circle(20) at:{location.x+offset,location.y+offset} color:rgb(179,186,196);
+	}
+}
+species point_HBF control:fsm{
+	action create_re_sprinter{
+		create ref_sprinter number:rnd(1) with:[location::location];
+	}
+	action create_re_shuttle{
+		create ref_shuttle number:rnd(1) with:[location::location];
+	}
+	action create_re_taxi{
+		create ref_taxi number:rnd(1) with:[location::location];
+	}
+}
+
+species ref_taxi_return skills: [moving]{
+	point final_target <- point(one_of(point_HBF));
+	int offset <- rnd(50);
+	reflex go{
+		do goto target: final_target on: terminal_flows speed:50#km/#h;
+	}
+	reflex end when: (location distance_to final_target) <= 10{
+		ask one_of(taxi){
+			do create_people;
+		}
+		do die;
+	}
+	aspect default {
+		draw circle(15) at:{location.x+offset,location.y+offset} color:rgb(62,120,119);
+	}
+}
+species ref_shuttle_return skills: [moving]{
+	point final_target <- point(one_of(point_HBF));
+	int offset <- rnd(50);
+	reflex go{
+		do goto target: final_target on: terminal_flows speed:50#km/#h;
+	}
+	reflex end when: (location distance_to final_target) <= 10{
+		ask one_of(shuttle){
+			do create_people;
+		}
+		do die;
+	}
+	aspect default {
+		draw circle(10) at:{location.x+offset,location.y+offset} color:rgb(122,193,198);
+		draw circle(50) empty:true width:0.5 at:{location.x+offset,location.y+offset} color:rgb(122,193,198);
+	}
+}
+species ref_sprinter_return skills: [moving]{
+	point final_target <- point(one_of(point_HBF));
+	int offset <- rnd(50);
+	reflex go{
+		do goto target: final_target on: terminal_flows speed:50#km/#h;
+	}
+	reflex end when: (location distance_to final_target) <= 10{
+		do die;
+	}
+	aspect default {
+		draw circle(20) at:{location.x+offset,location.y+offset} color:rgb(179,186,196);
+	}
+}
+
+species cruise_terminal control:fsm{
+	int id;
+	int active_terminal <- 1;
+	int size;
+	int freq_curve;
+	
+	reflex frequency_curve{
+		if current_hour < 8{
+			freq_curve<-45;
+		}
+		if current_hour = 8 {
+			freq_curve<-30;
+		}
+		if current_hour = 9{
+			freq_curve<-25;
+		}
+		if current_hour = 10{
+			freq_curve<-20;
+		}
+		if current_hour = 11{
+			freq_curve<-30;
+		}
+		if current_hour>11{
+			freq_curve<-3600;
+		}
+	}
+	
+	reflex disembarking_shuttle when: every(freq_curve#mn) {
+		if self.state ="active" and init_nb_tourist>people_left_terminal{
+			create ref_shuttle_return number:1 with:[location::location];	
+		}
+	}
+	reflex disembarking_taxi when: every(freq_curve+rnd(3)#mn) {
+		if self.state ="active" and init_nb_tourist>people_left_terminal{
+			create ref_taxi_return number:1 with:[location::location];	
+		}
+	}
+	reflex disembarking_sprinter when: every(freq_curve+rnd(10)#mn) {
+		if self.state ="active" and init_nb_tourist>people_left_terminal{
+			create ref_sprinter_return number:1 with:[location::location];	
+		}
+	}
+	
+	reflex active_terminals when: every(3600*24 #cycle){
+		active_terminal <- active_terminal+1;
+		if active_terminal > 3{
+			active_terminal <- 1;
+		}
+	}
+	
+	state inactive initial:true {
+		enter{
+			size <-25;
+			people_in_terminal<-0;
+			people_left_terminal<-0;
+		}
+		transition to: active when: active_terminal = id;
+	}
+	state active{
+		enter{
+			size <-75;
+		}
+		transition to: inactive when: active_terminal !=id;
+	}
+	aspect base {
+		draw circle(size) color:rgb(179,186,196);
+		if self.state="active"{
+			draw circle(size+people_in_terminal-people_left_terminal) empty:true width:0.5 color:rgb(179,186,196);
+		}
+	}
+		
+	aspect glow {
+		draw circle(size*3) color: #white;
 	}
 }
 
@@ -326,6 +517,63 @@ species car skills: [moving]{
 	}
 }
 
+species taxi_spot{}
+species taxi skills:[moving] control:fsm {
+	int luggage_capacity <- 3;
+	int tourist_capacity <- 2;
+	float speed <- 15 #km/#h;
+	point target_loc <- point(one_of(crew_spot));
+	taxi_spot own_spot;
+	int people_create <- rnd(3);
+	
+	action create_people {
+		people_left_terminal <- people_left_terminal+people_create;
+		create people number:people_create with:[location::location]{
+				size<-1.5;
+				color<- #white;
+				glow<-8;
+				speed <- min_speed_ppl + (max_speed_ppl - min_speed_ppl);
+		}	
+	}
+	action depart {
+		do goto target: target_loc on: network_traffic speed:speed;
+		if location distance_to point(one_of(shuttle_spot)) < 5{
+			ask point_HBF {
+				do create_re_taxi;	
+			}
+		}
+	}
+	
+	state empty {
+		enter {
+			luggage_capacity <- 3;
+			tourist_capacity <- 2;
+			target_loc <- point(own_spot);
+		}
+		do depart;
+		transition to: loading when: (location distance_to target_loc) <1;
+	}
+	
+	state loading initial:true {
+		enter{
+			own_spot <- taxi_spot closest_to self;
+		}
+		transition to: full when: tourist_capacity < 1 or luggage_capacity < 1;
+	}
+	
+	state full {
+		enter {
+			target_loc <- point(one_of(shuttle_spot));
+		}
+		do depart;
+		transition to: empty when: (location distance_to target_loc <5);
+	}
+
+	aspect base {
+		draw rectangle(4,4) color:rgb(46,83,97);
+	}
+}
+
 species metro_train skills: [moving]{
 	point final_target <- point(one_of(metro_origins));
 	point origin <- location;
@@ -345,7 +593,7 @@ species metro_train skills: [moving]{
 	}
 	
 	aspect default {
-		draw rectangle(80,10) color: #gray rotate:heading;
+		draw rectangle(80,10) color:rgb(58,69,78) rotate:heading;
 	}
 }
 
@@ -363,7 +611,7 @@ species metro_origins{
 
 species traffic_destination{}
 species traffic_road{} 
-
+species terminal_flow{}
 
 species roads{}
 species metro_line{
@@ -400,23 +648,8 @@ species sprinter_spot control:fsm{
 	}
 }
 
-species cruise_terminal control:fsm{
-	int id;
-	state inactive initial:true {
-		transition to: active when: active_terminal = id;
-	}
-	state active{
-		transition to: inactive when: active_terminal !=id;
-	}
-	aspect base {
-		//draw shape /*depth:15*/ color: color; //make depth correspond to height in shapefile
-		draw string(id) font:font("Calibri",5, #plain) color:#gray anchor:#center;
-	}
-}
-
 species hbf{
 	aspect base {
-		//draw shape /*depth:15*/ color: color; //make depth correspond to height in shapefile
 		draw shape border:rgb(75,77,79) width:0.5 empty:true;
 	}
 }
@@ -430,10 +663,14 @@ species metro{
 		create people number: nb_people*0.1 with: [location::location]{
 				speed <- min_speed_ppl + (max_speed_ppl - min_speed_ppl) ;
 				final_target <- point(one_of(metro));
+				size<-1.0;
+				color<- rgb(179,186,196);
 			}
 		create people number: nb_people*0.01 with: [location::location]{
 				speed <- min_speed_ppl + (max_speed_ppl - min_speed_ppl) ;
 				final_target <- point(any_location_in(geometry(walking_area)));
+				size<-1.0;
+				color<- rgb(179,186,196);
 			}	
 		} 
 		
@@ -476,9 +713,25 @@ species shuttle skills:[moving] control:fsm {
 	point target_loc <- point(one_of(crew_spot));
 	bool is_scheduled;
 	shuttle_spot own_spot;
+	int people_create <- rnd(50);
+	
+	action create_people {
+		people_left_terminal <- people_left_terminal+people_create;
+		create people number:people_create with:[location::location]{
+				size<-1.5;
+				color<- #white;
+				glow<-8;
+				speed <- min_speed_ppl + (max_speed_ppl - min_speed_ppl);
+		}	
+	}
 	
 	action depart {
 		do goto target: target_loc on:the_graph speed:speed;
+		if location distance_to point(one_of(crew_spot)) < 10{
+			ask point_HBF {
+				do create_re_shuttle;	
+			}
+		}
 	}
 	
 	reflex scheduled_depart when: every(1/shuttle_freq#h) {
@@ -526,13 +779,18 @@ species entry_points{
 			create people number: nb_people/train_freq with: [location::location]{
 				speed <- min_speed_ppl + (max_speed_ppl - min_speed_ppl) ;
 				final_target <- point(one_of(metro));
+				size<-1.0;
+				color<- rgb(179,186,196);
 			}
 			create tourist number: ((nb_tourist/train_freq)*(terminal_arrival_choice/100)) with: [location::location]{
 				speed <- min_speed_ppl + (max_speed_ppl - min_speed_ppl) ;
 			}	
-			create tourist_shuttle number: ((nb_tourist/train_freq)*(1-terminal_arrival_choice/100)) with: [location::location]{
+			create tourist_shuttle number: ((nb_tourist/train_freq*2)*(1-terminal_arrival_choice/100)) with: [location::location]{
 				speed <- min_speed_ppl + (max_speed_ppl - min_speed_ppl) ;
-			}	
+			}
+			create tourist_taxi number: ((nb_tourist/train_freq*2)*(1-terminal_arrival_choice/100)) with: [location::location]{
+				speed <- min_speed_ppl + (max_speed_ppl - min_speed_ppl) ;	
+			}
 		}
 	}	
 	
@@ -541,29 +799,34 @@ species entry_points{
 	}
 }
 
-species walking_area{
-	rgb color <- #gray;	
-	aspect base {
-		draw shape color: color;
-	}
-}
+species walking_area{}
 
 species people skills: [moving] {
 	point final_target;
-	float size <- people_size; 
+	float size; 
 	float speed <-gauss(3,2) #km/#h min: 1.0;
-	image_file icon <- person_icon;
+	int offsetx <- rnd(10);
+	int offsety <- rnd(10);
+	rgb color;
+	int glow;
 	
+	reflex target{
+		if final_target = nil{
+			final_target <- any_location_in(geometry(network));
+		}
+	}
 	reflex end when: (location distance_to final_target) <= 15{
 		do die;
 	}
-
 	reflex move {
 		do goto target: final_target on: network speed:speed;
 	}	
 	
 	aspect default {
-		draw circle(1) color: rgb(179,186,196);
+		draw circle(size) at:{location.x+offsetx,location.y+offsety} color:color;
+	}
+	aspect glow{
+		draw circle(glow) at:{location.x+offsetx,location.y+offsety} color: rgb(179,186,196);
 	}
 }
 
@@ -572,9 +835,14 @@ species sprinter skills:[moving] control:fsm {
 	int luggage_capacity;
 	image_file icon <- sprinter_icon;
 	float speed <- 10 #km/#h;
-	
+ 
 	action depart {
 		do goto target: target_loc on:the_graph speed:speed;
+		if location distance_to point(one_of(shuttle_spot)) < 5{
+			ask point_HBF {
+				do create_re_sprinter;	
+			}
+		}
 	}
 	
 	state empty initial:true {
@@ -683,6 +951,8 @@ species tourist skills:[moving] control:fsm {
 	int start_waiting_time_dropoff;
 	int end_waiting_time_dropoff;
 	int waiting_time_dropoff;
+	int offsetx <- rnd(5);
+	int offsety <- rnd(5);
 	
 	reflex waiting_time{
 		waiting_time_dropoff<-end_waiting_time_dropoff-start_waiting_time_dropoff;
@@ -731,15 +1001,16 @@ species tourist skills:[moving] control:fsm {
 		if (location distance_to final_target) < 10.0  {
 			current_shuttle <- shuttle closest_to self;	
 			current_shuttle.tourist_capacity <- current_shuttle.tourist_capacity - 1;
+			people_in_terminal <-people_in_terminal+1;
 			do die;
 		}
 	}
 	
 	aspect default {
-		draw circle(1.5) color: #white;
+		draw circle(1.5) at:{location.x+offsetx,location.y+offsety} color: #white;
 	}
 	aspect glow{
-		draw circle(8) color: rgb(179,186,196);
+		draw circle(8) at:{location.x+offsetx,location.y+offsety} color: rgb(179,186,196);
 	}
 }
 
@@ -756,6 +1027,8 @@ species tourist_shuttle skills:[moving] control:fsm {
 	point final_target;
 	bool knows_where_to_go <- false;
 	shuttle current_shuttle;
+	int offsetx <- rnd(7);
+	int offsety <- rnd(7);
 	
 	state search_drop_off_luggage initial: true{
 		if (final_target = nil) {
@@ -783,17 +1056,74 @@ species tourist_shuttle skills:[moving] control:fsm {
 		if (location distance_to final_target) < 2.0  {
 			current_shuttle <- shuttle closest_to self;	
 			current_shuttle.tourist_capacity <- current_shuttle.tourist_capacity - 1;
+			people_in_terminal <-people_in_terminal+1;
 			do die;
 		}
 	}
 	
 	aspect default {
-		draw circle(1.5) color: #white;
+		draw circle(1.5) at:{location.x+offsetx,location.y+offsety} color: #white;
 	}
 	aspect glow{
-		draw circle(8) color: rgb(179,186,196);
+		draw circle(8) at:{location.x+offsetx,location.y+offsety} color: rgb(179,186,196);
 	}
 }
+
+species tourist_taxi skills:[moving] control:fsm {
+	float speed <-gauss(3,1) #km/#h min: 1.0;
+	bool dropped_luggage;
+	int luggage_count <- 2;
+	bool dropping_now <- false;
+	float waiting_time;
+	int tourist_line;
+	image_file icon <- tourist_icon;
+	taxi_spot the_spot;
+	list<taxi_spot> known_boarding_areas;
+	point final_target;
+	bool knows_where_to_go <- false;
+	taxi current_taxi;
+	int offsetx <- rnd(5);
+	int offsety <- rnd(5);
+	
+	state search_drop_off_luggage initial: true{
+		if (final_target = nil) {
+			final_target <- any_location_in(free_space);
+		}
+		do goto target: final_target on: network speed:speed;
+		if (self distance_to final_target < 5.0) {
+			final_target <- nil;
+		}
+		known_boarding_areas <- known_boarding_areas + (taxi_spot at_distance (perception_distance*2));
+		transition to: goto_drop_off_luggage when: not empty(known_boarding_areas);
+	}
+	
+	state goto_drop_off_luggage {
+		enter {
+			the_spot <- one_of(known_boarding_areas); 
+			final_target <- the_spot.location;
+			knows_where_to_go <- true;
+		}
+		do goto target: final_target on: network speed:speed;
+		transition to: board_taxi when: (self distance_to final_target) < 2.0;
+	}
+	
+	state board_taxi  {
+		if (location distance_to final_target) < 2.0  {
+			current_taxi <- taxi closest_to self;	
+			current_taxi.tourist_capacity <- current_taxi.tourist_capacity - 1;
+			people_in_terminal <-people_in_terminal+1;
+			do die;
+		}
+	}
+	
+	aspect default {
+		draw circle(1.5) at:{location.x+offsetx,location.y+offsety} color: #white;
+	}
+	aspect glow{
+		draw circle(8) at:{location.x+offsetx,location.y+offsety} color: rgb(179,186,196);
+	}
+}
+
 
 experiment "PCM_Simulation" type: gui {
 	float minimum_cycle_duration <- 0.02;
@@ -835,18 +1165,29 @@ experiment "PCM_Simulation" type: gui {
 			species hbf aspect:base refresh:false;
 			species metro aspect: base refresh:false;
 			species shuttle_spot aspect: base ;
-			species people;
+			species people aspect: default;
+			species people aspect: glow transparency:0.85;
 			species tourist aspect: default;
+			species tourist_taxi aspect: default;
 			species tourist_shuttle aspect: default;
 			species tourist aspect: glow transparency:0.85;
 			species tourist_shuttle aspect: glow transparency:0.85;
+			species tourist_taxi aspect: glow transparency:0.85;
 			species sprinter aspect: default;
 			species crew aspect: default;
 			species crew_spot aspect:base ;
 			species shuttle aspect: base;
 			species cruise_terminal aspect:base;
+			species cruise_terminal aspect: glow transparency:0.85;
 			species car aspect:default;
-			 species metro_train aspect:default transparency:0.75;
+			species taxi aspect:base;
+			species metro_train aspect:default;
+			species ref_shuttle aspect:default;
+			species ref_taxi aspect:default;
+			species ref_sprinter aspect:default;
+			species ref_shuttle_return aspect:default;
+			species ref_taxi_return aspect:default;
+			species ref_sprinter_return aspect:default;
 			
 			overlay position: { 5, 5 } size: { 240 #px, 680 #px } background:rgb(55,62,70) transparency: 1.0 border: #black  {
                 rgb text_color<-rgb(179,186,196);
@@ -891,6 +1232,11 @@ experiment "PCM_Simulation" type: gui {
                 draw "_____________________________"at: { 25#px, y + 8#px } color:rgb(120,125,130) font: font("Calibri", 15, #bold) perspective:true;
                 y <- y + 21 #px; 
                 draw time_info at: { 25#px, y + 8#px } color:rgb(120,125,130) font: font("Calibri", 12, #plain) perspective:true;
+                y <- y + 21 #px; 
+                draw "Perople to the terminal: "+ string(people_in_terminal) at: { 25#px, y + 8#px } color:rgb(120,125,130) font: font("Calibri", 12, #plain) perspective:true;
+           		 y <- y + 21 #px; 
+                draw "Perople from the terminal: "+ string(people_left_terminal) at: { 25#px, y + 8#px } color:rgb(120,125,130) font: font("Calibri", 12, #plain) perspective:true;
+           
             }
 			
 ////////////////////User interaction starts here		
