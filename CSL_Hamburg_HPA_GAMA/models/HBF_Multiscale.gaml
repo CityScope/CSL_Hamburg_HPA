@@ -4,16 +4,6 @@
 * Description: simple model, that uses the moving skill - no accounting of people collision
 ***/
 
-
-/***
-INDEXES
-Amount of people disoriented
-Average waiting time at welcome center
-Amount of people queuing at welcome center
-Average delay welcome center - bus shuttle
-Amount of people on the way to the bus
-***/
-
 model HBFDetail
 
 global {
@@ -42,6 +32,7 @@ global {
 	file road_traffic_origin <- file(cityGISFolder + "ambiance/Traffic-origin.shp");
 	file road_traffic_destination <- file(cityGISFolder + "ambiance/Traffic-destination.shp");
 	file shapefile_buildingds <- file(cityGISFolder + "ambiance/buildings.shp");
+	file shapefile_vessel <- file(cityGISFolder + "ambiance/Vessel.shp");
 	
 	file site_plan <- image_file(cityGISFolder + "Site Plan.tif");
 	file shapefile_cruise_terminals <- file(Scenario + "larger_scale/Cruise_Terminals.shp");
@@ -113,13 +104,11 @@ global {
 	
 	reflex time_update when: every(1#hour) {
 		current_hour <- current_hour +1;
-		if current_hour > 23{
-			current_hour <- 0;
-		}
-		time_info <- "Day: " + string (current_day) + " Hour: " + string(current_hour) + ":00" ;
-		if current_hour mod 24 = 0{
+		if current_hour > 20{
+			current_hour <- 6;
 			current_day <- current_day+1;
 		}
+		time_info <- "Day: " + string (current_day) + " Hour: " + string(current_hour) + ":00" ;
 	}
 	
 	reflex time_peaks { 				//adjusted to IG activeness curve
@@ -243,6 +232,7 @@ global {
 ////////////User interaction ends here
 
 	init{	
+		create vessel from:shapefile_vessel;
 		create buildings from:shapefile_buildingds with:[height:int(read("Height"))];	
 		create cruise_terminal from: shapefile_cruise_terminals with:[id:int(read("id"))];
 		create hbf from: shapefile_hbf;
@@ -260,7 +250,7 @@ global {
 		free_space <- free_space simplification(1.0);
 		create obstacle from:(shape - free_space).geometries;
 		create sprinter number:nb_sprinters {
-			location <- any_location_in(one_of(roads));
+			location <- point(one_of(vessel));
 		}
 		create shuttle from:shapefile_shuttle;
 		create crew from: crew_spots {
@@ -402,33 +392,39 @@ species cruise_terminal control:fsm{
 	int freq_curve;
 	
 	reflex frequency_curve{
-		if current_hour < 8{
-			freq_curve<-45;
+		if current_hour <= 6{
+			freq_curve<-3600*24;
+		}
+		if current_hour = 7 {
+			freq_curve<-15;
 		}
 		if current_hour = 8 {
-			freq_curve<-30;
+			freq_curve<-10;
 		}
-		if current_hour = 9{
-			freq_curve<-25;
+		if current_hour = 9 {
+			freq_curve<-5;
 		}
 		if current_hour = 10{
-			freq_curve<-20;
+			freq_curve<-7;
 		}
 		if current_hour = 11{
-			freq_curve<-30;
+			freq_curve<-12;
 		}
-		if current_hour>11{
-			freq_curve<-3600;
+		if current_hour>11 and current_hour<=18 {
+			freq_curve<-15;
+		}
+		if current_hour>18{
+			freq_curve<-3600*24;
 		}
 	}
 	
 	reflex disembarking_shuttle when: every(freq_curve#mn) {
-		if self.state ="active" and init_nb_tourist>people_left_terminal{
+		if self.state ="active" and init_nb_tourist>people_left_terminal and current_hour<15{
 			create ref_shuttle_return number:1 with:[location::location];	
 		}
 	}
-	reflex disembarking_taxi when: every(freq_curve+rnd(3)#mn) {
-		if self.state ="active" and init_nb_tourist>people_left_terminal{
+	reflex disembarking_taxi when: every(freq_curve+rnd(10)#mn) {
+		if self.state ="active" and init_nb_tourist>people_left_terminal and current_hour<15{
 			create ref_taxi_return number:1 with:[location::location];	
 		}
 	}
@@ -438,7 +434,7 @@ species cruise_terminal control:fsm{
 		}
 	}
 	
-	reflex active_terminals when: every(3600*24 #cycle){
+	reflex active_terminals when: every(3600 #cycle){
 		active_terminal <- active_terminal+1;
 		if active_terminal > 3{
 			active_terminal <- 1;
@@ -476,7 +472,7 @@ species pedestrian_path {
 		draw shape color: #black;
 	}
 }
-
+species vessel{}
 species buildings{
 	int height;
 	aspect default {
@@ -522,9 +518,9 @@ species taxi skills:[moving] control:fsm {
 	int luggage_capacity <- 3;
 	int tourist_capacity <- 2;
 	float speed <- 15 #km/#h;
-	point target_loc <- point(one_of(crew_spot));
+	point target_loc <- point(one_of(vessel));
 	taxi_spot own_spot;
-	int people_create <- rnd(3);
+	int people_create <- rnd(3,4);
 	
 	action create_people {
 		people_left_terminal <- people_left_terminal+people_create;
@@ -537,7 +533,7 @@ species taxi skills:[moving] control:fsm {
 	}
 	action depart {
 		do goto target: target_loc on: network_traffic speed:speed;
-		if location distance_to point(one_of(shuttle_spot)) < 5{
+		if location distance_to point(one_of(vessel)) < 5{
 			ask point_HBF {
 				do create_re_taxi;	
 			}
@@ -563,7 +559,7 @@ species taxi skills:[moving] control:fsm {
 	
 	state full {
 		enter {
-			target_loc <- point(one_of(shuttle_spot));
+			target_loc <- point(one_of(vessel));
 		}
 		do depart;
 		transition to: empty when: (location distance_to target_loc <5);
@@ -710,10 +706,10 @@ species shuttle skills:[moving] control:fsm {
 	int luggage_capacity <- 100;
 	int tourist_capacity <- 50;
 	float speed <- 10 #km/#h;
-	point target_loc <- point(one_of(crew_spot));
+	point target_loc <- point(one_of(vessel));
 	bool is_scheduled;
 	shuttle_spot own_spot;
-	int people_create <- rnd(50);
+	int people_create <- rnd(10,45);
 	
 	action create_people {
 		people_left_terminal <- people_left_terminal+people_create;
@@ -726,8 +722,8 @@ species shuttle skills:[moving] control:fsm {
 	}
 	
 	action depart {
-		do goto target: target_loc on:the_graph speed:speed;
-		if location distance_to point(one_of(crew_spot)) < 10{
+		do goto target: target_loc on:network_traffic speed:speed;
+		if location distance_to point(one_of(vessel)) < 10{
 			ask point_HBF {
 				do create_re_shuttle;	
 			}
@@ -758,7 +754,7 @@ species shuttle skills:[moving] control:fsm {
 	
 	state full {
 		enter {
-			target_loc <- point(one_of(sprinter_spot));
+			target_loc <- point(one_of(vessel));
 		}
 		do depart;
 		transition to: empty when: (location distance_to target_loc <5);
@@ -837,8 +833,8 @@ species sprinter skills:[moving] control:fsm {
 	float speed <- 10 #km/#h;
  
 	action depart {
-		do goto target: target_loc on:the_graph speed:speed;
-		if location distance_to point(one_of(shuttle_spot)) < 5{
+		do goto target: target_loc on:network_traffic speed:speed;
+		if location distance_to point(one_of(vessel)) < 5{
 			ask point_HBF {
 				do create_re_sprinter;	
 			}
@@ -861,7 +857,7 @@ species sprinter skills:[moving] control:fsm {
 	
 	state full {
 		enter {
-			target_loc <- point(one_of(shuttle_spot));
+			target_loc <- point(one_of(vessel));
 		}
 		do depart;
 		transition to: empty when: (location distance_to target_loc <5);
@@ -1139,11 +1135,15 @@ experiment "PCM_Simulation" type: gui {
 
 	output {
 		display charts  background: rgb(55,62,70) refresh:every(5#mn){
-			chart "Tourist in Central Station" type: pie size:{1,0.3} position: {0,0}background: rgb(55,62,70) axes: #white color: rgb(122,193,198) legend_font:("Calibri") label_font:("Calibri") tick_font:("Calibri") title_font:("Calibri"){
-				data "Disoriented tourists" value: nb_tourists_disoriented color: rgb(122,193,198);
-				data "Tourists going to the luggage drop off area" value: nb_tourists_to_drop_off color: rgb(120,125,130);
-				data "Tourists dropping off their luggage" value: nb_tourists_dropping_luggage color: rgb(179,186,196);
-				data "Tourists going to the shuttles" value: nb_tourists_to_shuttles color: rgb(200,200,200);
+			chart "Tourist in Central Station" type: pie size:{0.5,0.2} position: {0,0}background: rgb(55,62,70) axes: #white color: rgb(122,193,198) legend_font:("Calibri") label_font:("Calibri") tick_font:("Calibri") title_font:("Calibri"){
+				data "Disoriented" value: nb_tourists_disoriented color: rgb(122,193,198);
+				data "To the welcome center" value: nb_tourists_to_drop_off color: rgb(120,125,130);
+				data "Dropping off their luggage" value: nb_tourists_dropping_luggage color: rgb(179,186,196);
+				data "To the shuttles" value: nb_tourists_to_shuttles color: rgb(200,200,200);
+			}
+			chart "Tourist in Terminal" type: pie size:{0.5,0.2} position: {0.5,0}background: rgb(55,62,70) axes: #white color: rgb(122,193,198) legend_font:("Calibri") label_font:("Calibri") tick_font:("Calibri") title_font:("Calibri"){
+				data "Boarding" value: people_in_terminal color: rgb(122,193,198);
+				data "Disembarking" value: people_left_terminal color: rgb(120,125,130);
 			}
 			chart " " type: series size:{1,0.3} position: {0,0.3} background: rgb(55,62,70) axes: #white color: #white legend_font:("Calibri") label_font:("Calibri") tick_font:("Calibri") title_font:("Calibri"){
 				data "Disoriented tourists" value: nb_tourists_disoriented color: rgb(179,186,196) marker_size:0 thickness:2;
