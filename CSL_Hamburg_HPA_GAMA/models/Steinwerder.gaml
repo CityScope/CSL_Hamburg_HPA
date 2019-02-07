@@ -7,7 +7,7 @@
 model Steinwerder
 
 global {
-	string cityGISFolder <- "/external/";
+	string cityGISFolder <- "/external/Steinwerder/";
 	
 	file shapefile_buildings <- file(cityGISFolder + "Buildings.shp");
 	file shapefile_entrance <- file(cityGISFolder + "entrance.shp");
