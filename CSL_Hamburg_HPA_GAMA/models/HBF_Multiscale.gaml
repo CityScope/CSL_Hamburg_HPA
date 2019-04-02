@@ -560,8 +560,42 @@ species car skills: [moving]{
 		draw rectangle(x,y) color: #grey rotate:heading;
 	}
 }
-species moia_spot{}
-species taxi_spot{}
+species moia_spot control:fsm{
+	state unavailable {
+		transition to: available when: location distance_to (moia closest_to self) >= 3;
+	}
+	
+	state available initial:true{
+		transition to:unavailable when: location distance_to (moia closest_to self) < 3;
+	}	
+	list<tourist_moia> waiting_tourists;
+	aspect base {
+		int i<-0;
+		loop t over:waiting_tourists{
+			//draw circle (1) at:{t.location.x+rnd(-3.0,3.0),t.location.y+rnd(-3.0,3.0)} color:#red ;	
+			draw circle (1) at:{t.location.x+i,t.location.y+i*3} color:rgb(246,232,198) ;
+			i<-i+1;	
+		}	
+	}
+}
+species taxi_spot control:fsm{
+	state unavailable {
+		transition to: available when: location distance_to (taxi closest_to self) >= 3;
+	}
+	
+	state available initial:true{
+		transition to:unavailable when: location distance_to (taxi closest_to self) < 3;
+	}
+	list<tourist_taxi> waiting_tourists;
+	aspect base {
+		int i<-0;
+		loop t over:waiting_tourists{
+			//draw circle (1) at:{t.location.x+rnd(-3.0,3.0),t.location.y+rnd(-3.0,3.0)} color:#red ;	
+			draw circle (1) at:{t.location.x+i,t.location.y+i*3} color:rgb(246,232,198) ;
+			i<-i+1;	
+		}	
+	}
+}
 species taxi skills:[moving] control:fsm {
 	int luggage_capacity <- 3;
 	int tourist_capacity <- 2;
@@ -743,11 +777,11 @@ species crew_spot{
 
 species sprinter_spot control:fsm{
 	state unavailable {
-		transition to: available when: location distance_to one_of(sprinter) >= 1;
+		transition to: available when: location distance_to (sprinter closest_to self) >= 1;
 	}
 	
 	state available initial:true{
-		transition to:unavailable when: location distance_to one_of(sprinter) < 1;
+		transition to:unavailable when: location distance_to (sprinter closest_to self) < 1;
 	}
 	
 	aspect default {
@@ -792,12 +826,22 @@ species shuttle_spot control:fsm {
 	rgb color <- #blue;	
 
 	state unavailable {
-		transition to: available when: location distance_to one_of(shuttle) >= 1;
+		transition to: available when: location distance_to (shuttle closest_to self) >= 1;
 	}
 	
 	state available initial:true{
-		transition to:unavailable when: location distance_to one_of(shuttle) < 1;
+		transition to:unavailable when: location distance_to (shuttle closest_to self) < 1;
 	}
+	
+	list<tourist_shuttle> waiting_tourists;
+	aspect base {
+		int i<-0;
+		loop t over:waiting_tourists{
+			//draw circle (1) at:{t.location.x+rnd(-3.0,3.0),t.location.y+rnd(-3.0,3.0)} color:#red ;	
+			draw circle (1) at:{t.location.x+i,t.location.y+i*3} color:rgb(246,232,198) ;
+			i<-i+1;	
+		}
+	} 
 	
 	
 ////////////User interaction starts here
@@ -806,7 +850,7 @@ species shuttle_spot control:fsm {
 		if (!(moved_agents contains self)){}
 	}
 ////////////User interaction ends here
-	aspect base {
+	aspect default {
 		draw circle(8) color:rgb(179,186,196);
 		}
 }
@@ -1039,7 +1083,6 @@ species crew skills:[moving] control:fsm {
 			target_loc <- nil;
 		}
 		do carry_luggage;
-		
 		transition to: go_back_spot when: carrying_luggage = 0;
 	}
 	
@@ -1095,7 +1138,7 @@ species tourist skills:[moving] control:fsm {
 	
 	state goto_drop_off_luggage {
 		enter {
-			the_spot <- one_of(known_drop_off_areas ); 
+			the_spot <- crew_spot(known_drop_off_areas min_of length(each.waiting_tourists)); 
 			final_target <- the_spot.location;
 			knows_where_to_go <- true;
 		}
@@ -1153,6 +1196,9 @@ species tourist_shuttle skills:[moving] control:fsm {
 	int offsety <- rnd(7);
 	image_file icon <- tourist_icon;
 	int size <-5;
+	list<shuttle> available_shuttles;
+	bool is_waiting;
+	
 	
 	state search_drop_off_luggage initial: true{
 		if (final_target = nil) {
@@ -1176,12 +1222,27 @@ species tourist_shuttle skills:[moving] control:fsm {
 		transition to: board_the_bus when: (self distance_to final_target) < 2.0;
 	}
 	
-	state board_the_bus  {
-		if (location distance_to final_target) < 2.0  {
-			current_shuttle <- shuttle closest_to self;	
-			current_shuttle.tourist_capacity <- current_shuttle.tourist_capacity - 1;
-			people_in_terminal <-people_in_terminal+1;
-			do die;
+reflex list_shuttle{
+		available_shuttles <- shuttle where (each.state = 'loading');
+	}
+	
+	state board_the_bus {
+		if (self distance_to final_target) < 2.0{
+			current_shuttle <- available_shuttles closest_to self;	
+			if current_shuttle != nil{
+				if current_shuttle.tourist_capacity > 0{
+					current_shuttle.tourist_capacity <- current_shuttle.tourist_capacity-1;
+					current_shuttle.luggage_capacity <- current_shuttle.luggage_capacity - self.luggage_count;
+					people_in_terminal <-people_in_terminal+1;
+					do die;
+				}
+			}else{
+				is_waiting <- true;
+				if self in the_spot.waiting_tourists { 
+					}else{
+					the_spot.waiting_tourists << self;
+				} 
+			}		
 		}
 	}
 	
@@ -1196,7 +1257,7 @@ species tourist_shuttle skills:[moving] control:fsm {
 
 species tourist_taxi skills:[moving] control:fsm {
 	float speed <-gauss(3,1) #km/#h min: 1.0;
-	int luggage_count <- 2;
+	int luggage_count <- rnd(1,4);
 	taxi_spot the_spot;
 	list<taxi_spot> known_boarding_areas;
 	point final_target;
@@ -1206,6 +1267,8 @@ species tourist_taxi skills:[moving] control:fsm {
 	int offsety <- rnd(5);
 	image_file icon <- tourist_icon;
 	int size <-5;
+	list<taxi> available_taxis;
+	bool is_waiting;
 	
 	state search_drop_off_luggage initial: true{
 		if (final_target = nil) {
@@ -1229,12 +1292,27 @@ species tourist_taxi skills:[moving] control:fsm {
 		transition to: board_taxi when: (self distance_to final_target) < 2.0;
 	}
 	
-	state board_taxi  {
-		if (location distance_to final_target) < 2.0  {
-			current_taxi <- taxi closest_to self;	
-			current_taxi.tourist_capacity <- current_taxi.tourist_capacity - 1;
-			people_in_terminal <-people_in_terminal+1;
-			do die;
+	reflex list_taxi{
+		available_taxis <- taxi where (each.state = 'loading');
+	}
+	
+	state board_taxi {
+		if (self distance_to final_target) < 2.0{
+			current_taxi <- available_taxis closest_to self;	
+			if current_taxi != nil{
+				if current_taxi.tourist_capacity > 0{
+					current_taxi.tourist_capacity <- current_taxi.tourist_capacity-1;
+					current_taxi.luggage_capacity <- current_taxi.luggage_capacity - self.luggage_count;
+					people_in_terminal <-people_in_terminal+1;
+					do die;
+				}
+			}else{
+				is_waiting <- true;
+				if self in the_spot.waiting_tourists { 
+					}else{
+					the_spot.waiting_tourists << self;
+				}
+			}		
 		}
 	}
 	
@@ -1258,6 +1336,8 @@ species tourist_moia skills:[moving] control:fsm {
 	int offsety <- rnd(5);
 	image_file icon <- tourist_icon;
 	int size <-5;
+	list<moia> available_moias;
+	bool is_waiting;
 	
 	state search_drop_off_luggage initial: true{
 		if (final_target = nil) {
@@ -1281,13 +1361,27 @@ species tourist_moia skills:[moving] control:fsm {
 		transition to: board_taxi when: (self distance_to final_target) < 2.0;
 	}
 	
-	state board_taxi  {
-		if (location distance_to final_target) < 2.0  {
-			current_moia <- moia closest_to self;	
-			current_moia.tourist_capacity <- current_moia.tourist_capacity - 1;
-			people_in_terminal <-people_in_terminal+1;
-			do die;
-			write 'took moia';
+	reflex list_moia{
+		available_moias <- moia where (each.state = 'loading');
+	}
+	
+	state board_taxi {
+		if (self distance_to final_target) < 2.0{
+			current_moia <- available_moias closest_to self;	
+			if current_moia != nil{
+				if current_moia.tourist_capacity > 0{
+					current_moia.tourist_capacity <- current_moia.tourist_capacity-1;
+					current_moia.luggage_capacity <- current_moia.luggage_capacity - self.luggage_count;
+					people_in_terminal <-people_in_terminal+1;
+					do die;
+				}
+			}else{
+				is_waiting <- true;
+				if self in the_spot.waiting_tourists { 
+					}else{
+					the_spot.waiting_tourists << self;
+				}
+			}		
 		}
 	}
 	
@@ -1309,7 +1403,7 @@ experiment "Port City Model" type: gui {
 	parameter "Frequency of trains (Fractions of an hour)" var: train_freq init:4.0 min:0.1 max:12.0 category: "Amount of people";
 	parameter "Frequency of bus shuttles (Fractions of an hour)" var:shuttle_freq init:2.0 min:0.1 max:12.0 category: "Infrastructure and service";
 	parameter "Size of welcome center" var: nb_sprinters init:3 min:1 max: 5 category: "Infrastructure and service";
-	parameter "Number of Moia vehicles" var:nb_moia init:0 min:0 max: 3 category: "Infrastructure and service";
+	parameter "Number of Moia vehicles" var:nb_moia init:1 min:1 max: 3 category: "Infrastructure and service";
 	parameter "Perception of info" var: perception_distance init:250.0 min:1.0 max:10000.0 category: "Infrastructure and service";
 	parameter "% of tourists using welcome center" init:80.0 var:terminal_arrival_choice min:1.0 max:100.0 category:"Behavioral profile";
 	parameter "% of tourists arriving in HH by train" init:20.0 var:hamburg_arrival_choice min:1.0 max:100.0 category: "Behavioral profile";
@@ -1341,11 +1435,11 @@ experiment "Port City Model" type: gui {
 			image site_plan transparency:0.75;
 			image intervention_plan position:{500,300};	
 			
-			species buildings aspect:default transparency:0.9;
+			//species buildings aspect:default transparency:0.9;
+			species shuttle_spot aspect: default;
 			species metro_line aspect:default refresh:false;
 			species hbf aspect:base refresh:false;
 			species metro aspect: base refresh:false;
-			species shuttle_spot aspect: base ;
 			species people aspect: default;
 			species people aspect: glow transparency:0.85;
 			species tourist aspect: default;
@@ -1373,6 +1467,10 @@ experiment "Port City Model" type: gui {
 			species ref_shuttle_return aspect:default;
 			species ref_taxi_return aspect:default;
 			species ref_sprinter_return aspect:default;
+			species moia_spot aspect:base;
+			species taxi_spot aspect:base;
+			species shuttle_spot aspect: base ;
+			
 			
 			overlay position: { 5, 5 } size: { 240 #px, 680 #px } background:rgb(55,62,70) transparency: 1.0 border: #black  {
                 rgb text_color<-rgb(179,186,196);
