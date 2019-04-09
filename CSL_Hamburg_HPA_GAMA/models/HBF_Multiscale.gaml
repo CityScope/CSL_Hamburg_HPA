@@ -18,7 +18,6 @@ global {
 	file pedestrian_paths <- file(cityGISFolder + "pedestrian_path_complex.shp");
 	file boundary <- file(cityGISFolder + "Bounds.shp");
 	file shapefile_moia <- file(cityGISFolder + "moia_spots.shp");
-	
 	file shapefile_taxi_stand <- file(Scenario + "taxi_stand.shp");
 	file crew_spots <- file(Scenario + "crew_spots.shp");
 	file sprinter_spots <- file(Scenario + "sprinter_spots.shp");
@@ -64,7 +63,7 @@ global {
 	
 	float min_speed_ppl <- 0.5 #km / #h;
 	float max_speed_ppl <- 2 #km / #h;
-	geometry free_space;
+
 	int coming_train;
 	float perception_distance; //Gehl social field of vision
 	
@@ -509,11 +508,6 @@ species buildings{
 		draw shape color: rgb(120,125,130) depth:(height*4);
 	}
 }
-
-species obstacle {
-	geometry free_space;
-}
-
 species car skills: [moving]{
 	point final_target <- point(one_of(traffic_destination));
 	point origin <- location;
@@ -1080,7 +1074,7 @@ species tourist skills:[moving] control:fsm {
 	}	
 	state search_drop_off_luggage initial: true{
 		if (final_target = nil) {
-			final_target <- any_location_in(free_space);
+			final_target <- any_location_in(geometry(network));
 		}
 		do goto target: final_target on: network speed:speed;
 		if (self distance_to final_target < 5.0) {
@@ -1152,7 +1146,7 @@ species tourist_shuttle skills:[moving] control:fsm {
 	
 	state search_drop_off_luggage initial: true{
 		if (final_target = nil) {
-			final_target <- any_location_in(free_space);
+			final_target <- any_location_in(geometry(network));
 		}
 		do goto target: final_target on: network speed:speed;
 		if (self distance_to final_target < 5.0) {
@@ -1219,7 +1213,7 @@ species tourist_taxi skills:[moving] control:fsm {
 	
 	state search_drop_off_luggage initial: true{
 		if (final_target = nil) {
-			final_target <- any_location_in(free_space);
+			final_target <- any_location_in(geometry(network));
 		}
 		do goto target: final_target on: network speed:speed;
 		if (self distance_to final_target < 5.0) {
@@ -1285,7 +1279,7 @@ species tourist_moia skills:[moving] control:fsm {
 	
 	state search_drop_off_luggage initial: true{
 		if (final_target = nil) {
-			final_target <- any_location_in(free_space);
+			final_target <- any_location_in(geometry(network));
 		}
 		do goto target: final_target on: network speed:speed;
 		if (self distance_to final_target < 5.0) {
