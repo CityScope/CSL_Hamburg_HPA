@@ -54,7 +54,7 @@ global {
 	graph network_metro;
 	graph terminal_flows;
 	
-	float step <- 2#s;
+	float step <- 1#s;
 	
 	int nb_moia;
 	int nb_sprinters;
@@ -205,17 +205,15 @@ global {
 			z <- machine_time;
 			return;
 		} 
-		count <- 0;
+		count <- 0; //////////////////////double click modification test ends here
 		if (empty(moved_agents)){
 			list<shuttle_spot> selected_agents <- shuttle_spot inside (zone at_location #user_location);
 			moved_agents <- selected_agents;
 			ask selected_agents{
 				difference <- #user_location - location;
-				color <- # olive;
 			}
 		} else if (can_drop){
 			ask moved_agents{
-				color <- # red;
 			}
 			moved_agents <- list<shuttle_spot>([]);
 		}
@@ -229,10 +227,8 @@ global {
 		ask moved_agents{
 			location <- #user_location - difference;
 			if (occupied intersects self){
-				color <- # red;
 				can_drop <- false;
 			} else{
-				color <- # olive;
 			}
 		}
 	}
