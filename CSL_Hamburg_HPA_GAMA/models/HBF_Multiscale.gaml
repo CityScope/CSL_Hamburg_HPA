@@ -1,6 +1,6 @@
 /***
 * Name: HBF_Multiscale
-* Author: JLopez from P. Taillandier's review on JLopez's model
+* Author: Jesus Lopez from P. Taillandier's review on JLopez's model, Arnaud Grignard 2019
 * Description: simple model, that uses the moving skill - no accounting of people collision
 ***/
 

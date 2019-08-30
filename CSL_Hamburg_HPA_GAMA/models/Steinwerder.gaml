@@ -1,6 +1,6 @@
 /***
 * Name: Steinwerder
-* Author: JLopez
+* Author: Jesus Lopez, Arnaud Grignard 2019
 * Description: simple model, that uses the moving skill - no accounting of people collision
 ***/
 

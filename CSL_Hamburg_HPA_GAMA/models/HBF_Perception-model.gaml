@@ -1,6 +1,6 @@
 /***
 * Name: HBFDetail
-* Author: JLopez
+* Author: Jesus Lopez, Arnaud Grignard
 * Description: The model aims to represent the movement of people and tourists in the tran station and surounding area. People arrive by train and go to random destinations. Tourist arrive by train and go to (1) taxi (2) luggage dropoff area and (3) take bus shuttle.
 * Update 28Nov2018: User interaction allows to move the final destinations (bus shuttle spots) on the run
 * Tags: Tag1, Tag2, TagN
